@@ -1,11 +1,10 @@
-import eventlet
-eventlet.monkey_patch()
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit
 from cs50 import SQL
 from flask_cors import CORS
 from datetime import datetime
 import pytz
+import os
 
 
 # Inicialização do app Flask e SocketIO
@@ -849,4 +848,6 @@ def handle_get_cardapio(data):
 
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000)
+    port = int(os.environ.get("PORT", 8000))
+    socketio.run(app, host='0.0.0.0', port=port)
+
