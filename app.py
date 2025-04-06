@@ -1,11 +1,22 @@
+
+from flask import send_from_directory
+import atexit
+import base64
+import matplotlib.pyplot as plt
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit
 from cs50 import SQL
 from flask_cors import CORS
-from datetime import datetime
+from datetime import datetime, timedelta
+from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
 import os
+import pandas as pd
+from io import BytesIO
+import logging
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
+print("importações feitas")
 # Inicialização do app Flask e SocketIO
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'seu_segredo_aqui'
@@ -13,10 +24,42 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 db = SQL('sqlite:///dados.db')
 CORS(app, resources={r"/*": {"origins": "*"}})  # Permite todas as origens
 
+print("iniciando o app")
+
+
+def atualizar_faturamento_diario():
+    hoje = datetime.now().date()
+    ontem = datetime.now() - timedelta(days=1)
+    dados = calcular_faturamento("Atualizar")
+    faturamento_prev = dados['faturamento_previsto']
+    drinks = dados['drink']
+    porcao = dados['porcao']
+    restantes = dados['restante']
+    pedidos = dados['pedidos']
+    db.execute("UPDATE pagamentos SET faturamento_prev = ?, drinks =?, porcoes=?, restantes=?, totais_pedidos=? WHERE dia = ?",
+               faturamento_prev, drinks, porcao, restantes, pedidos, ontem)
+    db.execute("INSERT INTO pagamentos (dia, faturamento_prev, drinks, porcoes, restantes, totais_pedidos,caixinha) VALUES (?, 0, 0, 0, 0, 0,0)", hoje)
+    print(db.execute("SELECT * FROM pagamentos"))
+    db.execute("DELETE FROM pedidos")
+
+
+# Agendador para rodar à meia-noite
+scheduler = BackgroundScheduler()
+scheduler.add_job(atualizar_faturamento_diario, 'cron', hour=0, minute=1)
+scheduler.start()
+
+# Garante que o scheduler pare quando encerrar o servidor
+atexit.register(lambda: scheduler.shutdown())
+
 
 @app.route("/")
 def home():
     return "Aplicação funcionando!", 200
+
+
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    return send_from_directory('static', filename)
 
 
 @app.route('/opcoes', methods=['POST'])
@@ -106,8 +149,6 @@ def pegar_pedidos():
             print(type(dados))
             return {'data': dados, 'preco': preco_total-preco_pago}
     return {'data': '', 'preco': ''}
-
-
 
 
 @app.route('/permitir', methods=['POST'])
@@ -336,6 +377,9 @@ def handle_insert_order(data):
 
         else:
             extra = data.get('extraSelecionados')
+        if len(extra) < len(pedidos):
+            # Preenche com strings vazias (ou " ") para os índices faltantes
+            extra += [" "] * (len(pedidos) - len(extra))
         print(f'Valor extra: {valorExtra}')
         print(username)
         print(comanda)
@@ -420,7 +464,7 @@ def handle_insert_order(data):
             else:
                 emit('initial_data', {
                     'dados_pedido': dados_pedido}, broadcast=True)
-
+        faturamento()
         handle_get_cardapio(comanda)
 
     except Exception as e:
@@ -428,15 +472,33 @@ def handle_insert_order(data):
         emit('error', {'message': str(e)})
 
 
-@socketio.on('faturamento')
-def faturamento():
+@socketio.on('alterarValor')
+def alterarValor(data):
     dia = datetime.now().date()
- # Obter a data atual
+    valor = float(data.get('valor'))
+    categoria = data.get('categoria')
+    comanda = data.get('comanda')
+    print("VALOR :", valor)
+    print('categoria:', categoria)
+    print(f'comanda: {comanda}')
+    if data:
+        if categoria == "Caixinha":
+            db.execute(
+                'UPDATE pagamentos SET caixinha = caixinha + ? WHERE dia = ?', valor, dia)
+        else:
+            db.execute(
+                "INSERT INTO pedidos (pedido,quantidade,preco,comanda,ordem) VALUES (?,?,?,?,?)", "DESCONTO", 1, valor*-1, comanda, 0)
+    faturamento()
+    handle_get_cardapio()
+
+
+def calcular_faturamento(data):
+    dia = datetime.now().date()
 
     # Executar a consulta e pegar o resultado
     faturament = db.execute(
         'SELECT faturamento FROM pagamentos WHERE dia = ?', dia)
-    faturamento = faturament[0]['faturamento'] if faturament else '0' 
+    faturamento = faturament[0]['faturamento'] if faturament else '0'
     dia_formatado = dia.strftime('%d/%m')
 
     faturamento_prev = db.execute(
@@ -444,9 +506,8 @@ def faturamento():
     faturamento_previsto = faturamento_prev[0]['valor_previsto'] if faturamento_prev[0]['valor_previsto'] else '0'
     drinks = db.execute(
         "SELECT SUM(quantidade) AS totaldrink FROM pedidos WHERE categoria =?", 2)
-    
-    drink = drinks[0]['totaldrink'] if drinks[0]['totaldrink'] else '0'
 
+    drink = drinks[0]['totaldrink'] if drinks[0]['totaldrink'] else '0'
 
     print(f'faturamento = {faturamento}')
     print(faturamento_previsto)
@@ -460,46 +521,94 @@ def faturamento():
     pedidostotais = db.execute(
         "SELECT SUM(quantidade) AS pedidostotais FROM pedidos")
     pedidos = pedidostotais[0]["pedidostotais"] if pedidostotais[0]["pedidostotais"] else '0'
-    print(drink)
-    print(type)
-    if pedidostotais:
-        print('entrou')
-        porcentagem_drink = int(drink)*100/int(pedidos) if drinks[0]['totaldrink'] else '0'
-        porcentagem_porcao = int(porcao)*100/int(pedidos) if porcaos[0]["totalporcao"] else '0'
-        porcentagem_restante = int(restante)*100/int(pedidos) if Restantes[0]["restantes"] else '0'
-    
-
-    emit('faturamento_enviar',{'dia': str(dia_formatado),
-                        'faturamento': faturamento,
-                        'faturamento_previsto': faturamento_previsto,
-                        'drink': drink, 'porcao': porcao,
-                        "restante": restante,
-                        "pedidos": pedidos,
-                        "porcentagem drink":porcentagem_drink,
-                        "porcentagem_porcao":porcentagem_porcao,
-                        "porcentagem_restante":porcentagem_restante,},
-                        broadcast=True,
-                        )
-
-@socketio.on('atualizar_dia')
-def atualizar_dia(data):
-    dia = data['dia']
-
-    # Verifica se o dia já existe no banco
-    existe = db.execute("SELECT * FROM faturamento_diario WHERE dia = ?", dia)
-
-    if not existe:
-        db.execute("""
-            INSERT INTO faturamento_diario (dia, faturamento, faturamento_previsto, total_pedidos, total_drinks, total_porcoes, total_restantes)
-            VALUES (?, 0, 0, 0, 0, 0, 0)
-        """, dia)
-        db.commit()
-        print(f"Novo dia {dia} inserido no banco de dados.")
-
-    emit("dia_atualizado", {"mensagem": f"Dia {dia} atualizado!"}, broadcast=True)
+    return ({'faturamento_previsto': faturamento_previsto,
+             'drink': drink,
+             'porcao': porcao,
+             "restante": restante,
+             "pedidos": pedidos, })
 
 
+@socketio.on('faturamento')
+def faturamento():
+    dia = datetime.now().date()
 
+    # Executar a consulta e pegar o resultado
+    faturament = db.execute(
+        'SELECT faturamento,caixinha FROM pagamentos WHERE dia = ?', dia)
+    faturamento = faturament[0]['faturamento'] if faturament else '0'
+    caixinha = faturament[0]['caixinha'] if faturament[0]['caixinha'] else '0'
+    faturamento_prev = db.execute(
+        "SELECT SUM (preco*quantidade) AS valor_previsto FROM pedidos")
+    faturamento_previsto = faturamento_prev[0]['valor_previsto'] if faturamento_prev[0]['valor_previsto'] else '0'
+    drinks = db.execute(
+        "SELECT SUM(quantidade) AS totaldrink,SUM(preco)as preco_drinks FROM pedidos WHERE categoria =?", 2)
+    preco_drink = drinks[0]['preco_drinks'] if drinks[0]['preco_drinks'] else '0'
+    drink = drinks[0]['totaldrink'] if drinks[0]['totaldrink'] else '0'
+
+    print(f'faturamento = {faturamento}')
+    print(faturamento_previsto)
+    print(f"drinks: {drink}")
+    porcaos = db.execute(
+        "SELECT SUM(quantidade) AS totalporcao, SUM(preco) AS preco_porcoes FROM pedidos WHERE categoria =?", 3)
+    porcao = porcaos[0]["totalporcao"] if porcaos[0]["totalporcao"] else 0
+    preco_porcoes = porcaos[0]['preco_porcoes'] if porcaos[0]['preco_porcoes'] else 0
+    Restantes = db.execute(
+        "SELECT SUM(quantidade) AS restantes,SUM(preco) as preco_restantes FROM pedidos WHERE categoria = ?", 1)
+    restante = Restantes[0]["restantes"] if Restantes[0]["restantes"] else 0
+    preco_restantes = Restantes[0]["preco_restantes"] if Restantes[0]["preco_restantes"] else '0'
+    pedidostotais = db.execute(
+        "SELECT SUM(quantidade) AS pedidostotais FROM pedidos")
+    pedidos = pedidostotais[0]["pedidostotais"] if pedidostotais[0]["pedidostotais"] else '0'
+
+    data = {
+        "Tipo": [f"Drinks R${preco_drink}", f"Porcoes R${preco_porcoes}", f"Restantes R${preco_restantes}", f"Caixinha R${caixinha}"],
+        "Valor": [preco_drink, preco_porcoes, preco_restantes, caixinha]
+    }
+
+    df = pd.DataFrame(data)
+
+    fig, ax = plt.subplots()
+    cores = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0']
+    wedges, texts, autotexts = ax.pie(
+        df['Valor'],
+        labels=df['Tipo'],
+        autopct='%1.1f%%',
+        startangle=90,
+        colors=cores
+    )
+    # Muda só o tamanho dos labels (tipos)
+    for text in texts:
+        text.set_fontsize(18)  # rótulos (ex: "Drinks R$20")
+
+    # Muda só o tamanho dos valores (%)
+    for autotext in autotexts:
+        autotext.set_fontsize(13)  # porcentagens (ex: "25.0%")
+    ax.axis('equal')
+
+    buf = BytesIO()
+    filename = 'static/grafico.png'
+    plt.tight_layout()
+    plt.savefig(filename, format='png', dpi=300,
+                transparent=True, bbox_inches='tight',)
+    plt.close(fig)
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+
+    print("tamanho de imagem base64:", len(img_base64))
+    print(f"caixinha = {caixinha}")
+
+    emit('faturamento_enviar', {'dia': str(dia),
+                                'faturamento': faturamento,
+                                'faturamento_previsto': faturamento_previsto,
+                                'drink': drink,
+                                'porcao': porcao,
+                                "restante": restante,
+                                "pedidos": pedidos,
+                                "grafico": f'http://192.168.1.44:8000/static/grafico.png',
+                                "caixinha": caixinha,
+                                },
+         broadcast=True,
+         )
 
 
 @socketio.on('atualizar_pedidos')
@@ -520,26 +629,29 @@ def handle_atualizar_pedidos(data):
 def desfazer_pagamento(data):
     comanda = data.get('comanda')
     print(comanda)
-    prec = db.execute('SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ?',comanda,1)
+    prec = db.execute(
+        'SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ?', comanda, 1)
 
     db.execute(
         'UPDATE pedidos SET ordem = ordem-? WHERE comanda = ? AND ordem>?', 1, comanda, 0)
     db.execute(
         'UPDATE valores_pagos SET ordem = ordem - ? WHERE comanda = ?', 1, comanda)
-    
+
     print(prec)
     if prec[0]['total']:
         preco = float(prec[0]['total'])
-        valor = db.execute("SELECT valor_pago FROM valores_pagos WHERE ordem = ? AND comanda = ?",0,comanda)
+        valor = db.execute(
+            "SELECT valor_pago FROM valores_pagos WHERE ordem = ? AND comanda = ?", 0, comanda)
         if valor:
             preco -= float(valor[0]['valor_pago'])
         dia = datetime.now().date()
         db.execute(
-        'UPDATE pagamentos SET faturamento = faturamento - ? WHERE dia = ?', float(preco), dia)
+            'UPDATE pagamentos SET faturamento = faturamento - ? WHERE dia = ?', float(preco), dia)
         print(f'preco DESFAZER PAGAMNTO : {preco}')
 
         faturamento()
     handle_get_cardapio(comanda)
+    handle_connect()
 
 
 @socketio.on('pesquisa_comanda')
@@ -587,7 +699,12 @@ def handle_delete_comanda(data):
         else:
             comanda = data.get('fcomanda')
             valor_pago = float(data.get('valor_pago'))
+            caixinha = data.get('caixinha')
+            print("CAIXINHA =", caixinha)
             dia = datetime.now().date()
+            if caixinha:
+                db.execute(
+                    "UPDATE pagamentos SET caixinha = caixinha + ? WHERE dia = ?", caixinha, dia)
             print(f'Data de hoje: {dia}')
 
             # Verificar se já existe um pagamento registrado para o dia
@@ -615,9 +732,10 @@ def handle_delete_comanda(data):
         # Atualizar a ordem da comanda
         db.execute('UPDATE pedidos SET ordem = ordem +? WHERE comanda = ?',
                    1, comanda)
-        print
 
         # Emitir o evento de comanda apagada
+        faturamento()
+        handle_connect()
         emit('comanda_deleted', {'fcomanda': comanda}, broadcast=True)
 
     except Exception as e:
@@ -631,6 +749,10 @@ def pagar_parcial(data):
     print(f'pagar parcial comanda : ', end='')
     print(comanda)
     valor_pago = data.get('valor_pago')
+    caixinha = data.get('caixinha')
+    if caixinha:
+        db.execute('UPDATE pagamentos SET caixinha = caixinha + ?',
+                   float(caixinha))
 
     dia = datetime.now().date()
     print(f'data de hoje : {dia}')
@@ -662,6 +784,7 @@ def pagar_parcial(data):
     print(total_comanda)
     if valor_total >= float(total_comanda[0]['total']):
         handle_delete_comanda(comanda)
+    faturamento()
     handle_get_cardapio(comanda)
 
 
@@ -917,5 +1040,7 @@ def handle_get_cardapio(data):
 
 
 if __name__ == '__main__':
+    print("servidor_iniciado")
     port = int(os.environ.get("PORT", 8000))
-    socketio.run(app, host='0.0.0.0', port=port)
+    socketio.run(app, host='0.0.0.0', port=8000,
+                 debug=True, use_reloader=False)
