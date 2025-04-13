@@ -12,6 +12,7 @@ from flask_cors import CORS
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
+from pytz import timezone
 import os
 import pandas as pd
 from io import BytesIO
@@ -25,7 +26,7 @@ app.config['SECRET_KEY'] = 'seu_segredo_aqui'
 socketio = SocketIO(app, cors_allowed_origins="*")
 db = SQL('sqlite:///dados.db')
 CORS(app, resources={r"/*": {"origins": "*"}})  # Permite todas as origens
-
+brazil = timezone('America/Sao_Paulo')
 
 @app.route("/")
 def home():
@@ -40,7 +41,7 @@ def serve_static(filename):
 
 
 def atualizar_faturamento_diario():
-    hoje = datetime.now().date()
+    hoje = datetime.now(brazil).date()
     ontem = datetime.now() - timedelta(days=1)
     dados = calcular_faturamento("Atualizar")
     faturamento_prev = dados['faturamento_previsto']
@@ -57,7 +58,7 @@ def atualizar_faturamento_diario():
 
 # Agendador para rodar à meia-noite
 scheduler = BackgroundScheduler()
-scheduler.add_job(atualizar_faturamento_diario, 'cron', hour=12, minute=30)
+scheduler.add_job(atualizar_faturamento_diario, 'cron', hour=12, minute=30, timezone = brazil)
 scheduler.start()
 
 # Garante que o scheduler pare quando encerrar o servidor
@@ -512,7 +513,7 @@ def handle_insert_order(data):
 
 @socketio.on('faturamento')
 def faturamento():
-    dia = datetime.now().date()
+    dia = datetime.now(brazil).date()
 
     # Executar a consulta e pegar o resultado
     faturament = db.execute(
@@ -558,7 +559,7 @@ def faturamento():
 
 @socketio.on('alterarValor')
 def alterarValor(data):
-    dia = datetime.now().date()
+    dia = datetime.now(brazil).date()
     valor = float(data.get('valor'))
     categoria = data.get('categoria')
     comanda = data.get('comanda')
@@ -577,7 +578,7 @@ def alterarValor(data):
 
 
 def calcular_faturamento(data):
-    dia = datetime.now().date()
+    dia = datetime.now(brazil).date()
 
     # Executar a consulta e pegar o resultado
     faturament = db.execute(
@@ -643,7 +644,7 @@ def desfazer_pagamento(data):
         valor = db.execute("SELECT valor_pago FROM valores_pagos WHERE ordem = ? AND comanda = ?",0,comanda)
         if valor:
             preco -= float(valor[0]['valor_pago'])
-        dia = datetime.now().date()
+        dia = datetime.now(brazil).date()
         db.execute(
         'UPDATE pagamentos SET faturamento = faturamento - ? WHERE dia = ?', float(preco), dia)
         print(f'preco DESFAZER PAGAMNTO : {preco}')
@@ -697,7 +698,7 @@ def handle_delete_comanda(data):
         else:
             comanda = data.get('fcomanda')
             valor_pago = float(data.get('valor_pago'))
-            dia = datetime.now().date()
+            dia = datetime.now(brazil).date()
             print(f'Data de hoje: {dia}')
 
             # Verificar se já existe um pagamento registrado para o dia
@@ -743,7 +744,7 @@ def pagar_parcial(data):
     print(comanda)
     valor_pago = data.get('valor_pago')
 
-    dia = datetime.now().date()
+    dia = datetime.now(brazil).date()
     print(f'data de hoje : {dia}')
     valor_do_dia = db.execute('SELECT * FROM pagamentos WHERE dia = ?', dia)
     if valor_do_dia:
