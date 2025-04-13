@@ -58,7 +58,7 @@ def atualizar_faturamento_diario():
 
 # Agendador para rodar à meia-noite
 scheduler = BackgroundScheduler()
-scheduler.add_job(atualizar_faturamento_diario, 'cron', hour=12, minute=42, timezone = brazil)
+scheduler.add_job(atualizar_faturamento_diario, 'cron', hour=1, minute=0, timezone = brazil)
 scheduler.start()
 
 # Garante que o scheduler pare quando encerrar o servidor
