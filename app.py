@@ -57,7 +57,7 @@ def atualizar_faturamento_diario():
 
 # Agendador para rodar à meia-noite
 scheduler = BackgroundScheduler()
-scheduler.add_job(atualizar_faturamento_diario, 'cron', hour=0, minute=1)
+scheduler.add_job(atualizar_faturamento_diario, 'cron', hour=12, minute=30)
 scheduler.start()
 
 # Garante que o scheduler pare quando encerrar o servidor
@@ -610,29 +610,6 @@ def calcular_faturamento(data):
              'porcao': porcao,
              "restante": restante,
              "pedidos": pedidos, })
-
-
-
-
-@socketio.on('atualizar_dia')
-def atualizar_dia(data):
-    dia = data['dia']
-
-    # Verifica se o dia já existe no banco
-    existe = db.execute("SELECT * FROM faturamento_diario WHERE dia = ?", dia)
-
-    if not existe:
-        db.execute("""
-            INSERT INTO faturamento_diario (dia, faturamento, faturamento_previsto, total_pedidos, total_drinks, total_porcoes, total_restantes)
-            VALUES (?, 0, 0, 0, 0, 0, 0)
-        """, dia)
-        db.commit()
-        print(f"Novo dia {dia} inserido no banco de dados.")
-
-    emit("dia_atualizado", {"mensagem": f"Dia {dia} atualizado!"}, broadcast=True)
-
-
-
 
 
 @socketio.on('atualizar_pedidos')
