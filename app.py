@@ -24,7 +24,7 @@ logging.getLogger('matplotlib').setLevel(logging.WARNING)
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'seu_segredo_aqui'
 socketio = SocketIO(app, cors_allowed_origins="*")
-db = SQL("sqlite:////data/dados.db")
+db = SQL("sqlite:///data/dados.db")
 CORS(app, resources={r"/*": {"origins": "*"}})  # Permite todas as origens
 brazil = timezone('America/Sao_Paulo')
 
