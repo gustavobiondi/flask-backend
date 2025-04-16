@@ -25,7 +25,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'seu_segredo_aqui'
 socketio = SocketIO(app, cors_allowed_origins="*")
 DATABASE_PATH = os.getenv("DATABASE_PATH", "/data/dados.db")
-db = SQL("sqlite:////" + DATABASE_PATH)
+db = SQL("sqlite:///" + DATABASE_PATH)
 
 CORS(app, resources={r"/*": {"origins": "*"}})  # Permite todas as origens
 brazil = timezone('America/Sao_Paulo')
