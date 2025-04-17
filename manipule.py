@@ -13,5 +13,5 @@ dia = datetime.now().date()
 
 
 
-db.execute("UPDATE cardapio SET opcoes = ? WHERE item = ?",'Frutas(abacaxi-acai-banana com canela-caju-kiwi-limao-limao siciliano-lima da persia-manga-maracuja-melancia-morango-tangerina)Adicional(leite condensado)','item')
+db.execute("UPDATE cardapio SET opcoes = ? WHERE item = ?",'Frutas(abacaxi-acai-banana com canela-caju-kiwi-limao-limao siciliano-lima da persia-manga-maracuja-melancia-morango-tangerina)Adicional(leite condensado)','suco')
 print(db.execute("SELECT * FROM cardapio WHERE item = 'suco'"))
