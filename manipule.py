@@ -1,6 +1,14 @@
 from datetime import datetime
 from cs50 import SQL
-db = SQL('sqlite:///dados.db')
+import shutil
+import os
+
+DATABASE_PATH = "/data/dados.db"
+if not os.path.exists(DATABASE_PATH):
+    shutil.copy("dados.db", DATABASE_PATH)
+db = SQL("sqlite:///" + DATABASE_PATH)
+
 dia = datetime.now().date()
 
-db.execute("INSERT INTO pagamentos (dia,faturamento, faturamento_prev, drinks, porcoes, restantes, totais_pedidos,caixinha) VALUES (?,0, 0, 0, 0, 0, 0,0)", dia)
+
+db.execute("UPDATE cardapio SET opcoes = ? WHERE item = 'suco'",'Frutas(abacaxi-acai-banana com canela-caju-kiwi-limao-limao siciliano-lima da persia-manga-maracuja-melancia-morango-tangerina)Adicional(leite condensado)')

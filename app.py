@@ -193,36 +193,19 @@ def verif_quantidade():
 
     if categoria and categoria[0]['categoria_id'] != 2:
         verificar_estoque = db.execute(
-            'SELECT quantidade FROM estoque WHERE item = ?', item)
+            'SELECT quantidade,estoque_ideal FROM estoque WHERE item = ?', item)
 
         if verificar_estoque:
             estoque_atual = float(verificar_estoque[0]['quantidade'])
             if estoque_atual - float(quantidade) < 0:
                 return {'erro': 'Estoque insuficiente', 'quantidade': estoque_atual}
-            else:
-                return {'erro': False, 'quantidade': estoque_atual}
+            elif estoque_atual:
+                estoque_ideal = verificar_estoque[0]['estoque_ideal']
+                if estoque_ideal:
+                    alerta = 7 if item!='tropical' and item!='red bull' else 3
+                    if estoque_atual<alerta:
+                        return {'erro': False, 'quantidade': estoque_atual}
     return {'erro': False}
-
-
-@app.route('/verificar_quantidade_enviar', methods=['POST'])
-def verificar_quantidade():
-    data = request.json  # Use request.json para pegar o corpo da requisição
-    item = data.get('item')
-    quantidade = data.get('quantidade')
-    categoria = db.execute(
-        'SELECT categoria_id FROM cardapio WHERE item = ?', item)
-    if categoria[0]['categoria_id'] != 2:
-        verificar_estoque = db.execute(
-            'SELECT quantidade FROM estoque WHERE item = ?', item)
-
-        if verificar_estoque:
-            estoque_atual = float(verificar_estoque[0]['quantidade'])
-            if estoque_atual - float(quantidade) < 0:
-                return {'erro': True, 'quantidade': estoque_atual}
-            else:
-                return {'erro': False, 'quantidade': estoque_atual}
-    return {'erro': False}
-
 
 
 
