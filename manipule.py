@@ -11,7 +11,6 @@ db = SQL("sqlite:///" + DATABASE_PATH)
 dia = datetime.now().date()
 
 
-
-
-db.execute("UPDATE cardapio SET opcoes = ? WHERE item = ?",'Frutas(abacaxi-acai-banana com canela-caju-kiwi-limao-limao siciliano-lima da persia-manga-maracuja-melancia-morango-tangerina)Adicional(leite condensado+2)','suco')
-print(db.execute("SELECT * FROM cardapio WHERE item = 'suco'"))
+db.execute('INSERT INTO usuarios  (username,senha,liberado,cargo) VALUES (?,?,?,?)',"baiano",'0000','1','colaborador')
+db.execute('INSERT INTO usuarios  (username,senha,liberado,cargo) VALUES (?,?,?,?)',"roberto",'1234','1','colaborador')
+print(db.execute("SELECT * FROM usuarios"))
