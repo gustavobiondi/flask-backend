@@ -11,6 +11,9 @@ db = SQL("sqlite:///" + DATABASE_PATH)
 dia = datetime.now().date()
 
 
-db.execute('INSERT INTO usuarios  (username,senha,liberado,cargo) VALUES (?,?,?,?)',"baiano",'0000','1','colaborador')
-db.execute('INSERT INTO usuarios  (username,senha,liberado,cargo) VALUES (?,?,?,?)',"roberto",'1234','1','colaborador')
-print(db.execute("SELECT * FROM usuarios"))
+db.execute('UPDATE estoque_geral SET item = ? WHERE estoque_ideal = ? AND quantidadae = ?','agua',588,226)
+db.execute('UPDATE estoque_geral SET item = ? WHERE estoque_ideal = ? AND quantidadae = ?','agua c gas',288,144)
+db.execute('UPDATE estoque_geral SET item = ? WHERE estoque_ideal = ? AND quantidadae = ?','agua tonica',60,48)
+db.execute('UPDATE estoque_geral SET item = ? WHERE estoque_ideal = ? AND quantidadae = ?','tang',64,160)
+
+print(db.execute('SELECT * FROM estoque_geral'))
