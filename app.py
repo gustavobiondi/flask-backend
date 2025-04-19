@@ -526,7 +526,7 @@ def faturamento():
     faturamento = faturament[0]['faturamento'] if faturament else '0'
     caixinha = faturament[0]['caixinha'] if faturament[0]['caixinha'] else '0'
     faturamento_prev = db.execute(
-        "SELECT SUM (quantidade) AS valor_previsto FROM pedidos")
+        "SELECT SUM (preco) AS valor_previsto FROM pedidos")
     faturamento_previsto = faturamento_prev[0]['valor_previsto'] if faturamento_prev[0]['valor_previsto'] else '0'
     drinks = db.execute(
         "SELECT SUM(quantidade) AS totaldrink,SUM(preco)as preco_drinks FROM pedidos WHERE categoria =?", 2)
