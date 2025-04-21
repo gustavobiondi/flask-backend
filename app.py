@@ -687,11 +687,11 @@ def handle_delete_comanda(data):
         else:
             comanda = data.get('fcomanda')
             valor_pago = float(data.get('valor_pago'))
-            caixinha = float(data.get('caixinha'))
+            caixinha = data.get('caixinha')
             dia = datetime.now(brazil).date()
             print(f'Data de hoje: {dia}')
             if caixinha:
-                db.execute("UPDATE pagamentos SET caixinha = caixinha + ? WHERE dia = ?",caixinha,dia)
+                db.execute("UPDATE pagamentos SET caixinha = caixinha + ? WHERE dia = ?",float(caixinha),dia)
             # Verificar se já existe um pagamento registrado para o dia
             valor_do_dia = db.execute(
                 # Adicionando tupla para os parâmetros
