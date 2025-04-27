@@ -466,7 +466,7 @@ def handle_insert_order(data):
             if preco_unitario:
                 categoria = preco_unitario[0]['categoria_id']
                 if categoria==2 and extra[i]:
-                    emit('NotificacaoPedido', {'pedido':pedido,'comanda':comanda,'extra':extra[i],"quantidade":quantidade})
+                    emit('NotificacaoPedido', {'pedido':pedido,'comanda':comanda,'extra':extra[i],"quantidade":quantidade},broadcast=True)
                 print('if')
             else:
                 categoria = '4'
@@ -673,7 +673,7 @@ def calcular_faturamento(data):
 def handle_atualizar_pedidos(data):
     p = data.get('pedidoAlterado')
     usuario=data.get('usuario')
-    alteracoes=f'{p['pedido']}, '
+    alteracoes=f'{p["pedido"]}, '
     preco = db.execute(
         'SELECT comanda,preco,quantidade,extra,pedido FROM pedidos WHERE id = ?', p['id'])
     if preco : 
