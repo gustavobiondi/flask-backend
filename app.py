@@ -19,7 +19,7 @@ from io import BytesIO
 import logging
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 import subprocess
-
+import requests
 
 
 var = True
@@ -46,6 +46,22 @@ brazil = timezone('America/Sao_Paulo')
 def home():
     return "Aplicação funcionando!", 200
 
+def enviar_notificacao_expo(token, titulo, corpo, canal="default"):
+    url = "https://exp.host/--/api/v2/push/send"
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "to": token,
+        "title": titulo,
+        "body": corpo,
+        "sound": "default",
+        "android_channel_id": canal  # precisa estar igual ao definido no app
+    }
+
+    response = requests.post(url, json=payload, headers=headers)
+    return response.json()
 
 
 @app.route('/static/<path:filename>')
@@ -484,6 +500,7 @@ def handle_insert_order(data):
             elif not preco_unitario:
                 db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome) VALUES (?, ?, ?,?,?,?,?,?,?,?,?)',
                            comanda, pedido, float(quantidade), 0, 4, horario, 'A Fazer', extra[i], username, 0, nomes[i])
+                enviar_notificacao_expo('ExponentPushToken[9YNRuAFiHSSvynUswvSwYL]','Pedido Enviado',f'{quantidade} {pedido} na {comanda}')
             elif not valorExtra:
                 db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome) VALUES (?, ?, ?,?,?,?,?,?,?,?,?)',
                            comanda, pedido, float(quantidade), float(preco_unitario[0]['preco'])*float(quantidade), categoria, horario, 'A Fazer', extra[i], username, 0, nomes[i])
