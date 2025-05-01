@@ -492,11 +492,12 @@ def handle_insert_order(data):
                 nomes[i] = "-1"
             print("extra", extra)
             estava = 'a'
-
+            enviar_notificacao_expo('ExponentPushToken[Uut-ErHpKIq3QB6T48c7Sc]','Pedido Enviado',f'{quantidade} {pedido} na {comanda}')
             if preco:
                 print('brinde')
                 db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome) VALUES (?, ?, ?,?,?,?,?,?,?,?,?)',
                            comanda, pedido, float(quantidade), 0, categoria, horario, 'A Fazer', extra[i], username, 0, nomes[i])
+                enviar_notificacao_expo('ExponentPushToken[Uut-ErHpKIq3QB6T48c7Sc]','Pedido Enviado',f'{quantidade} {pedido} na {comanda}')
             elif not preco_unitario:
                 db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome) VALUES (?, ?, ?,?,?,?,?,?,?,?,?)',
                            comanda, pedido, float(quantidade), 0, 4, horario, 'A Fazer', extra[i], username, 0, nomes[i])
@@ -504,6 +505,7 @@ def handle_insert_order(data):
             elif not valorExtra:
                 db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome) VALUES (?, ?, ?,?,?,?,?,?,?,?,?)',
                            comanda, pedido, float(quantidade), float(preco_unitario[0]['preco'])*float(quantidade), categoria, horario, 'A Fazer', extra[i], username, 0, nomes[i])
+                enviar_notificacao_expo('ExponentPushToken[Uut-ErHpKIq3QB6T48c7Sc]','Pedido Enviado',f'{quantidade} {pedido} na {comanda}')
             else:
                 brek = False
                 contV = -1
