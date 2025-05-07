@@ -29,7 +29,7 @@ if var:
 # Inicialização do app Flask e SocketIO
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'seu_segredo_aqui'
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*")  
 import shutil
 
 if var:
@@ -63,7 +63,7 @@ def salvarTokenCargo():
     cargo = data.get('cargo')
     token = data.get('token')
     print(f'data {data}, username {username}, token {token}')
-    db.execute('UPDATE tokens SET username = ?, cargo = ? WHERE token = ? GROUP BY token',username,cargo,token)
+    db.execute('UPDATE tokens SET username = ?, cargo = ? WHERE token = ?',username,cargo,token)
     return "cargo e user inserido com sucesso"
 
 def enviar_notificacao_expo(cargo,titulo,corpo, canal="default"):

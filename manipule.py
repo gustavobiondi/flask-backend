@@ -11,4 +11,3 @@ db = SQL("sqlite:///" + DATABASE_PATH)
 
 hoje = datetime.now().date()
 
-db.execute("CREATE TABLE IF NOT EXISTS tokens (token TEXT NOT NULL,cargo TEXT, username TEXT)")
