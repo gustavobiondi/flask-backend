@@ -22,7 +22,7 @@ import subprocess
 import requests
 
 
-var = False
+var = True
 if var:
     subprocess.run(['python','deleteAll.py'])
 
