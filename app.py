@@ -24,7 +24,7 @@ import requests
 
 var = True
 if var:
-    subprocess.run(['python','deleteAll.py'])
+    subprocess.run(['python','manipule.py'])
 
 # Inicialização do app Flask e SocketIO
 app = Flask(__name__)
