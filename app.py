@@ -22,8 +22,9 @@ import subprocess
 import requests
 
 
-var = True
-
+var = False
+if var:
+    subprocess.run(['python','deleteAll.py'])
 
 # Inicialização do app Flask e SocketIO
 app = Flask(__name__)
@@ -46,22 +47,52 @@ brazil = timezone('America/Sao_Paulo')
 def home():
     return "Aplicação funcionando!", 200
 
-def enviar_notificacao_expo(token, titulo, corpo, canal="default"):
-    url = "https://exp.host/--/api/v2/push/send"
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "to": token,
-        "title": titulo,
-        "body": corpo,
-        "sound": "default",
-        "android_channel_id": canal  # precisa estar igual ao definido no app
-    }
+@app.route('/salvarToken', methods=['POST'])
+def salvarToken():
+    data = request.get_json()
+    token = data.get('token')
+    db.execute('SELECT * FROM tokens WHERE token = ?',token)
+    if not token:
+        db.execute("INSERT INTO tokens (token) VALUES (?)",token)
+    print(token)
+    return "token salvo com sucesso"
+@app.route('/salvarTokenCargo', methods=['POST'])
+def salvarTokenCargo():
+    data = request.get_json()
+    username = data.get('username')
+    cargo = data.get('cargo')
+    token = data.get('token')
+    print(f'data {data}, username {username}, token {token}')
+    db.execute('UPDATE tokens SET username = ?, cargo = ? WHERE token = ? GROUP BY token',username,cargo,token)
+    return "cargo e user inserido com sucesso"
 
-    response = requests.post(url, json=payload, headers=headers)
-    return response.json()
+def enviar_notificacao_expo(cargo,titulo,corpo, canal="default"):
+    print(f'cargo {cargo} titulo, {titulo},corpo {corpo} canal {canal}')
+    if cargo:
+        tokens = db.execute('SELECT token FROM tokens WHERE cargo = ? GROUP BY token',cargo)
+    else:
+        tokens = db.execute('SELECT token FROM tokens GROUP BY token')
+
+    respostas = []
+    for row in tokens:
+        token = row['token']
+        url = "https://exp.host/--/api/v2/push/send"
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "to": token,
+            "title": titulo,
+            "body": corpo,
+            "sound": "default",
+            "android_channel_id": canal  # precisa estar igual ao definido no app
+        }
+
+        res = requests.post(url, json=payload, headers=headers)
+        respostas.append(res.json())  # Armazena o conteúdo da resposta, não o objeto
+    print(respostas)
+    return respostas
 
 
 @app.route('/static/<path:filename>')
@@ -256,7 +287,7 @@ def change_brinde():
 
 @socketio.on('connect')
 def handle_connect():
-    print('Cliente conectado')
+    print(f'Cliente conectado:{request.sid}')
 
 
 @socketio.on('getCardapio')
@@ -480,11 +511,8 @@ def handle_insert_order(data):
                 'SELECT preco,categoria_id FROM cardapio WHERE item = ?', pedido)
             if preco_unitario:
                 categoria = preco_unitario[0]['categoria_id']
-                if categoria==2 and extra[i]:
-                    emit('NotificacaoPedido', {'pedido':pedido,'comanda':comanda,'extra':extra[i],"quantidade":quantidade})
-                print('if')
             else:
-                categoria = '4'
+                categoria = 4
                 print('else')
             if not extra[i]:
                 extra[i] = " "
@@ -492,20 +520,25 @@ def handle_insert_order(data):
                 nomes[i] = "-1"
             print("extra", extra)
             estava = 'a'
-            enviar_notificacao_expo('ExponentPushToken[Uut-ErHpKIq3QB6T48c7Sc]','Pedido Enviado',f'{quantidade} {pedido} na {comanda}')
+            if categoria==3:
+                enviar_notificacao_expo('Cozinha','Novo Pedido',f'{quantidade} {pedido} {extra[i]} na {comanda}')
+            elif categoria==2:
+                enviar_notificacao_expo('Colaborador','Novo Pedido',f'{quantidade} {pedido} {extra[i]} na {comanda}')
+            
+            enviar_notificacao_expo('ADM','Novo Pedido',f'{quantidade} {pedido} {extra[i]} na {comanda}')
             if preco:
                 print('brinde')
                 db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome) VALUES (?, ?, ?,?,?,?,?,?,?,?,?)',
                            comanda, pedido, float(quantidade), 0, categoria, horario, 'A Fazer', extra[i], username, 0, nomes[i])
-                enviar_notificacao_expo('ExponentPushToken[Uut-ErHpKIq3QB6T48c7Sc]','Pedido Enviado',f'{quantidade} {pedido} na {comanda}')
+                
             elif not preco_unitario:
                 db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome) VALUES (?, ?, ?,?,?,?,?,?,?,?,?)',
                            comanda, pedido, float(quantidade), 0, 4, horario, 'A Fazer', extra[i], username, 0, nomes[i])
-                enviar_notificacao_expo('ExponentPushToken[Uut-ErHpKIq3QB6T48c7Sc]','Pedido Enviado',f'{quantidade} {pedido} na {comanda}')
+                
             elif not valorExtra:
                 db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome) VALUES (?, ?, ?,?,?,?,?,?,?,?,?)',
                            comanda, pedido, float(quantidade), float(preco_unitario[0]['preco'])*float(quantidade), categoria, horario, 'A Fazer', extra[i], username, 0, nomes[i])
-                enviar_notificacao_expo('ExponentPushToken[Uut-ErHpKIq3QB6T48c7Sc]','Pedido Enviado',f'{quantidade} {pedido} na {comanda}')
+               
             else:
                 brek = False
                 contV = -1
