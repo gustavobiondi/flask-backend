@@ -47,15 +47,6 @@ brazil = timezone('America/Sao_Paulo')
 def home():
     return "Aplicação funcionando!", 200
 
-@app.route('/salvarToken', methods=['POST'])
-def salvarToken():
-    data = request.get_json()
-    token = data.get('token')
-    db.execute('SELECT * FROM tokens WHERE token = ?',token)
-    if not token:
-        db.execute("INSERT INTO tokens (token) VALUES (?)",token)
-    print(token)
-    return "token salvo com sucesso"
 @app.route('/salvarTokenCargo', methods=['POST'])
 def salvarTokenCargo():
     data = request.get_json()
@@ -63,16 +54,21 @@ def salvarTokenCargo():
     cargo = data.get('cargo')
     token = data.get('token')
     print(f'data {data}, username {username}, token {token}')
-    db.execute('UPDATE tokens SET username = ?, cargo = ? WHERE token = ?',username,cargo,token)
+    if db.execute('SELECT * FROM tokens WHERE token =?',token):
+        db.execute('DELETE FROM tokens WHERE token = ?',token)
+    
+    db.execute('INSERT INTO tokens (username,cargo,token) VALUES (?,?,?)',username,cargo,token)
+    
+
     return "cargo e user inserido com sucesso"
 
-def enviar_notificacao_expo(cargo,titulo,corpo, canal="default"):
+def enviar_notificacao_expo(cargo,titulo,corpo,token_user,canal="default"):
     print(f'cargo {cargo} titulo, {titulo},corpo {corpo} canal {canal}')
     if cargo:
         tokens = db.execute('SELECT token FROM tokens WHERE cargo = ? GROUP BY token',cargo)
     else:
         tokens = db.execute('SELECT token FROM tokens GROUP BY token')
-
+    tokens = [row for row in tokens if row['token'] != token_user]
     respostas = []
     for row in tokens:
         token = row['token']
@@ -88,11 +84,11 @@ def enviar_notificacao_expo(cargo,titulo,corpo, canal="default"):
             "sound": "default",
             "android_channel_id": canal  # precisa estar igual ao definido no app
         }
-
         res = requests.post(url, json=payload, headers=headers)
         respostas.append(res.json())  # Armazena o conteúdo da resposta, não o objeto
     print(respostas)
     return respostas
+
 
 
 @app.route('/static/<path:filename>')
@@ -103,8 +99,8 @@ def serve_static(filename):
 
 def atualizar_faturamento_diario():
     hoje = datetime.now(brazil).date()
-    ontem = datetime.now() - timedelta(days=1)
-    dados = calcular_faturamento("Atualizar")
+    ontem = (datetime.now(brazil) - timedelta(days=1)).date()
+    dados = calcular_faturamento(ontem)
     faturamento_prev = dados['faturamento_previsto']
     drinks = dados['drink']
     porcao = dados['porcao']
@@ -120,7 +116,7 @@ def atualizar_faturamento_diario():
 
 # Agendador para rodar à meia-noite
 scheduler = BackgroundScheduler()
-scheduler.add_job(atualizar_faturamento_diario, 'cron', hour=0, minute=1, timezone = brazil)
+scheduler.add_job(atualizar_faturamento_diario, 'cron', hour=0, minute=5, timezone = brazil)
 scheduler.start()
 
 # Garante que o scheduler pare quando encerrar o servidor
@@ -419,6 +415,7 @@ def handle_insert_order(data):
         username = data.get('username')
         preco = data.get('preco')
         nomes = data.get('nomeSelecionado')
+        token_user=data.get('token_user')
         opcoesSelecionadas = data.get('opcoesSelecionadas')
         print(f"opcoesSelecionadas = {opcoesSelecionadas}")
         valorExtra = []
@@ -515,17 +512,21 @@ def handle_insert_order(data):
                 categoria = 4
                 print('else')
             if not extra[i]:
-                extra[i] = " "
+                extra[i] = ""
+            else:
+                extra[i] = extra[i].strip() + ' '
+            
             if not nomes[i]:
                 nomes[i] = "-1"
+            
             print("extra", extra)
             estava = 'a'
             if categoria==3:
-                enviar_notificacao_expo('Cozinha','Novo Pedido',f'{quantidade} {pedido} {extra[i]} na {comanda}')
+                enviar_notificacao_expo('Cozinha','Novo Pedido',f'{quantidade} {pedido} {extra[i]}na {comanda}',token_user)
             elif categoria==2:
-                enviar_notificacao_expo('Colaborador','Novo Pedido',f'{quantidade} {pedido} {extra[i]} na {comanda}')
+                enviar_notificacao_expo('Colaborador','Novo Pedido',f'{quantidade} {pedido} {extra[i]}na {comanda}',token_user)
             
-            enviar_notificacao_expo('ADM','Novo Pedido',f'{quantidade} {pedido} {extra[i]} na {comanda}')
+            enviar_notificacao_expo('ADM','Novo Pedido',f'{quantidade} {pedido} {extra[i]}na {comanda}',token_user)
             if preco:
                 print('brinde')
                 db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome) VALUES (?, ?, ?,?,?,?,?,?,?,?,?)',
@@ -595,11 +596,11 @@ def faturamento(data):
     if type(data)!=bool:
         change = data.get('change')
         dia = datetime.now(brazil).date() + timedelta(days=(change))
-        dia_formatado = dia.strftime('%d/%m')
-        
+        dia_formatado = data.get('dia')
         
         emitir = data.get('emitir')
     else:
+        dia = datetime.now(brazil).date()
         emitir = data
         dia_formatado = dia.strftime('%d/%m')
 
@@ -681,8 +682,7 @@ def alterarValor(data):
     handle_get_cardapio(comanda)
 
 
-def calcular_faturamento(data):
-    dia = datetime.now(brazil).date()
+def calcular_faturamento(dia):
 
     # Executar a consulta e pegar o resultado
     faturament = db.execute(
@@ -940,6 +940,8 @@ def atualizar__comanda(data):
     for i in itensAlterados:
 
         item = i['pedido']
+        antes_dic = db.execute('SELECT quantidade FROM pedidos WHERE pedido = ? and ordem = ?',item,0)
+        antes = antes_dic[0]['quantidade']
 
         quantidade = float(i['quantidade'])
         print(f'quantidade = {quantidade}')
@@ -956,7 +958,7 @@ def atualizar__comanda(data):
                 db.execute(
                     'UPDATE estoque SET quantidade = quantidade + ? WHERE item = ?', quantidade_total, item)
                 
-                insertAlteracoesTable('estoque carrinho',f'{i["pedido"]} {i["quantidade"]}','editou','Editar Comanda',usuario)
+                insertAlteracoesTable('Pedido Editado',f'{i["pedido"]} de {antes} para {i["quantidade"]}','editou','Editar Comanda',usuario)
 
 
             db.execute(
@@ -985,7 +987,7 @@ def atualizar__comanda(data):
                 if verifEstoq:
                     db.execute(
                         'UPDATE estoque SET quantidade = quantidade + ? WHERE item = ?', quantidade_atualizada, item)
-                    insertAlteracoesTable('estoque carrinho',f'{i["pedido"]} {i["quantidade"]}','editou','Editar Comanda',usuario)
+                insertAlteracoesTable('Pedido Editado',f'{i["pedido"]} de {antes} para {i["quantidade"]}','editou','Editar Comanda',usuario)
                 for k in ids:
                     if quantidade_atualizada > 0:
                         print(f'quantidade atualizada {quantidade_atualizada}')
@@ -1008,7 +1010,7 @@ def atualizar__comanda(data):
                 if verifEstoq:
                     db.execute(
                         'UPDATE estoque SET quantidade = quantidade - ? WHERE item = ?', quantidade_atualizada, item)
-                    insertAlteracoesTable('estoque carrinho',f'{i["pedido"]} {i["quantidade"]}','editou','Editar Comanda',usuario)
+                insertAlteracoesTable('Pedido Editado',f'{i["pedido"]} de {antes} para {i["quantidade"]}','editou','Editar Comanda',usuario)
 
             db.execute('''
                             DELETE FROM pedidos
@@ -1214,10 +1216,7 @@ def editarCardapio(data):
         insertAlteracoesTable('Cardapio',alteracoes,'Editou','Tela Cardapio',usuario)
 
         getCardapio(True)
-
-            
-            
-        
+  
 
 @socketio.on('removerCardapio')
 def removerCardapio(data):
