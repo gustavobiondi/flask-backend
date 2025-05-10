@@ -22,7 +22,7 @@ import subprocess
 import requests
 
 
-var = True
+var = False
 if var:
     subprocess.run(['python','manipule.py'])
 
@@ -110,8 +110,9 @@ def atualizar_faturamento_diario():
                faturamento_prev, drinks, porcao, restantes, pedidos, ontem)
     db.execute("INSERT INTO pagamentos (dia,faturamento, faturamento_prev, drinks, porcoes, restantes, totais_pedidos,caixinha) VALUES (?,0, 0, 0, 0, 0, 0,0)", hoje)
     print(db.execute("SELECT * FROM pagamentos"))
-    db.execute("DELETE FROM pedidos")
+    db.execute("DELETE FROM valores_pagos")
     db.execute('UPDATE usuarios SET liberado = ? WHERE cargo != ?',0,'ADM')
+    db.execute('DELETE FROM tokens WHERE cargo!=?','ADM')
 
 
 # Agendador para rodar à meia-noite
@@ -159,21 +160,21 @@ def pegar_pedidos():
     comanda = data.get('comanda')
     ordem = data.get('ordem')
     print(f'ORDEM : {ordem}')
-
+    dia = datetime.now(brazil).date()
     if int(ordem) != 0:
         # Executando a consulta no banco de dados
         dados = db.execute('''
             SELECT pedido, id, ordem, SUM(quantidade) AS quantidade, SUM(preco) AS preco
-            FROM pedidos WHERE comanda = ? AND ordem = ?
+            FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?
             GROUP BY pedido
-        ''', comanda, int(ordem))
+        ''', comanda, int(ordem),dia)
         valor_pago = db.execute(
             'SELECT valor_pago FROM valores_pagos WHERE comanda = ?', comanda)
         total_comanda = db.execute('''
-            SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ?
-        ''', comanda, int(ordem))
+            SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?
+        ''', comanda, int(ordem),dia)
         v_comanda_existe = db.execute(
-            'SELECT pedido FROM pedidos WHERE comanda = ? AND ordem = ?', comanda, int(ordem))
+            'SELECT pedido FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?', comanda, int(ordem),dia)
 
         if v_comanda_existe:
             preco_total = float(
@@ -188,10 +189,10 @@ def pegar_pedidos():
         valor_pago = db.execute(
             'SELECT valor_pago FROM valores_pagos WHERE comanda = ?', comanda)
         total_comanda = db.execute('''
-            SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ?
-        ''', comanda, 0)
+            SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?
+        ''', comanda, 0,dia)
         v_comanda_existe = db.execute(
-            'SELECT pedido FROM pedidos WHERE comanda = ? AND ordem = ?', comanda, 0)
+            'SELECT pedido FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?', comanda, 0,dia)
 
         if v_comanda_existe:
             preco_total = float(
@@ -203,8 +204,8 @@ def pegar_pedidos():
 
             dados = db.execute('''
                 SELECT pedido,id,ordem, SUM(quantidade) AS quantidade, SUM(preco) AS preco
-                FROM pedidos WHERE comanda =? AND ordem = ? GROUP BY pedido
-            ''', comanda, 0)
+                FROM pedidos WHERE comanda =? AND ordem = ? AND dia = ? GROUP BY pedido
+            ''', comanda, 0,dia)
             print(dados)
             print(type(dados))
             return {'data': dados, 'preco': preco_total-preco_pago}
@@ -293,7 +294,8 @@ def getCardapio(emitirBroadcast):
 
 @socketio.on('getPedidos')
 def getPedidos(emitirBroadcast):
-    dataPedidos = db.execute('SELECT * FROM pedidos')
+    dia = datetime.now(brazil).date()
+    dataPedidos = db.execute('SELECT * FROM pedidos WHERE dia = ?',dia)
     if dataPedidos:
         emit('respostaPedidos',{'dataPedidos':dataPedidos},broadcast=emitirBroadcast)
 
@@ -312,10 +314,11 @@ def getEstoqueGeral(emitirBroadcast):
 
 @socketio.on('getComandas')
 def getComandas(emitirBroadcast):
+    dia = datetime.now(brazil).date()
     dados_comandaAberta = db.execute(
-        'SELECT comanda FROM pedidos WHERE ordem = ? GROUP BY comanda', 0)
+        'SELECT comanda FROM pedidos WHERE ordem = ? AND dia = ? GROUP BY comanda', 0,dia)
     dados_comandaFechada = db.execute(
-        'SELECT comanda,ordem FROM pedidos WHERE ordem !=? GROUP BY comanda', 0)
+        'SELECT comanda,ordem FROM pedidos WHERE ordem !=? AND dia = ? GROUP BY comanda', 0,dia)
     if dados_comandaAberta or dados_comandaFechada:
         emit('respostaComandas', {'dados_comandaAberta':dados_comandaAberta,'dados_comandaFechada':dados_comandaFechada},broadcast=emitirBroadcast)
 
@@ -407,6 +410,7 @@ def editEstoque(data):
 @socketio.on('insert_order')
 def handle_insert_order(data):
     try:
+        dia = datetime.now(brazil).date()
 
         comanda = data.get('comanda')
         pedidos = data.get('pedidosSelecionados')
@@ -529,16 +533,16 @@ def handle_insert_order(data):
             enviar_notificacao_expo('ADM','Novo Pedido',f'{quantidade} {pedido} {extra[i]}na {comanda}',token_user)
             if preco:
                 print('brinde')
-                db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome) VALUES (?, ?, ?,?,?,?,?,?,?,?,?)',
-                           comanda, pedido, float(quantidade), 0, categoria, horario, 'A Fazer', extra[i], username, 0, nomes[i])
+                db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome,dia) VALUES (?, ?, ?,?,?,?,?,?,?,?,?,?)',
+                           comanda, pedido, float(quantidade), 0, categoria, horario, 'A Fazer', extra[i], username, 0, nomes[i],dia)
                 
             elif not preco_unitario:
-                db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome) VALUES (?, ?, ?,?,?,?,?,?,?,?,?)',
-                           comanda, pedido, float(quantidade), 0, 4, horario, 'A Fazer', extra[i], username, 0, nomes[i])
+                db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome,dia) VALUES (?, ?, ?,?,?,?,?,?,?,?,?,?)',
+                           comanda, pedido, float(quantidade), 0, 4, horario, 'A Fazer', extra[i], username, 0, nomes[i],dia)
                 
             elif not valorExtra:
-                db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome) VALUES (?, ?, ?,?,?,?,?,?,?,?,?)',
-                           comanda, pedido, float(quantidade), float(preco_unitario[0]['preco'])*float(quantidade), categoria, horario, 'A Fazer', extra[i], username, 0, nomes[i])
+                db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome,dia) VALUES (?, ?, ?,?,?,?,?,?,?,?,?,?)',
+                           comanda, pedido, float(quantidade), float(preco_unitario[0]['preco'])*float(quantidade), categoria, horario, 'A Fazer', extra[i], username, 0, nomes[i],dia)
                
             else:
                 brek = False
@@ -557,19 +561,19 @@ def handle_insert_order(data):
                                 item[chave]) * float(quantidade)
                             print(
                                 f'Inserindo valor {valor_inserido} no pedido {pedido}')
-                            db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome) VALUES (?, ?, ?,?,?,?,?,?,?,?,?)',
-                                       comanda, pedido, float(quantidade), (float(preco_unitario[0]['preco'])*float(quantidade))+valor_inserido, categoria, horario, 'A Fazer', extra[i], username, 0, nomes[i])
+                            db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome,dia) VALUES (?, ?, ?,?,?,?,?,?,?,?,?,?)',
+                                       comanda, pedido, float(quantidade), (float(preco_unitario[0]['preco'])*float(quantidade))+valor_inserido, categoria, horario, 'A Fazer', extra[i], username, 0, nomes[i],dia)
                             estava = 'b'
                             del (valorExtra[contV])
                             brek = True
                             break
                     if estava == 'a':
-                        db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome) VALUES (?, ?, ?,?,?,?,?,?,?,?,?)',
-                                   comanda, pedido, float(quantidade), float(preco_unitario[0]['preco'])*float(quantidade), categoria, horario, 'A Fazer', extra[i], username, 0, nomes[i])
+                        db.execute('INSERT INTO pedidos(comanda, pedido, quantidade,preco,categoria,inicio,estado,extra,username,ordem,nome,dia) VALUES (?, ?, ?,?,?,?,?,?,?,?,?,?)',
+                                   comanda, pedido, float(quantidade), float(preco_unitario[0]['preco'])*float(quantidade), categoria, horario, 'A Fazer', extra[i], username, 0, nomes[i],dia)
 
             quantidade_anterior = db.execute(
                 'SELECT quantidade FROM estoque WHERE item = ?', pedido)
-            dados_pedido = db.execute('SELECT * FROM pedidos')
+            dados_pedido = db.execute('SELECT * FROM pedidos WHERE dia = ?',dia)
             if quantidade_anterior:
                 quantidade_nova = float(
                     quantidade_anterior[0]['quantidade']) - quantidade
@@ -581,7 +585,7 @@ def handle_insert_order(data):
                 getEstoque(True)            
                 
             
-
+        faturamento(True)
         handle_get_cardapio(comanda)
 
     except Exception as e:
@@ -591,13 +595,11 @@ def handle_insert_order(data):
 
 @socketio.on('faturamento')
 def faturamento(data):
-    dia = datetime.now(brazil).date()
 
     if type(data)!=bool:
         change = data.get('change')
         dia = datetime.now(brazil).date() + timedelta(days=(change))
-        dia_formatado = data.get('dia')
-        
+        dia_formatado = dia.strftime('%d/%m')
         emitir = data.get('emitir')
     else:
         dia = datetime.now(brazil).date()
@@ -611,10 +613,10 @@ def faturamento(data):
         faturamento = faturament[0]['faturamento'] if faturament else '0'
         caixinha = faturament[0]['caixinha'] if faturament[0]['caixinha'] else '0'
         faturamento_prev = db.execute(
-            "SELECT SUM (preco) AS valor_previsto FROM pedidos WHERE pedido != ?",'CAIXINHA')
+            "SELECT SUM (preco) AS valor_previsto FROM pedidos WHERE pedido != ? AND dia = ?",'CAIXINHA',dia)
         faturamento_previsto = faturamento_prev[0]['valor_previsto'] if faturamento_prev[0]['valor_previsto'] else '0'
         drinks = db.execute(
-            "SELECT SUM(quantidade) AS totaldrink,SUM(preco)as preco_drinks FROM pedidos WHERE categoria =?", 2)
+            "SELECT SUM(quantidade) AS totaldrink,SUM(preco)as preco_drinks FROM pedidos WHERE categoria =? AND dia = ?", 2,dia)
         preco_drink = drinks[0]['preco_drinks'] if drinks[0]['preco_drinks'] else '0'
         drink = drinks[0]['totaldrink'] if drinks[0]['totaldrink'] else '0'
 
@@ -622,15 +624,15 @@ def faturamento(data):
         print(faturamento_previsto)
         print(f"drinks: {drink}")
         porcaos = db.execute(
-            "SELECT SUM(quantidade) AS totalporcao, SUM(preco) AS preco_porcoes FROM pedidos WHERE categoria =?", 3)
+            "SELECT SUM(quantidade) AS totalporcao, SUM(preco) AS preco_porcoes FROM pedidos WHERE categoria =? AND dia = ?", 3,dia)
         porcao = porcaos[0]["totalporcao"] if porcaos[0]["totalporcao"] else 0
         
         Restantes = db.execute(
-            "SELECT SUM(quantidade) AS restantes,SUM(preco) as preco_restantes FROM pedidos WHERE categoria = ?", 1)
+            "SELECT SUM(quantidade) AS restantes,SUM(preco) as preco_restantes FROM pedidos WHERE categoria = ? AND dia = ?", 1,dia)
         restante = Restantes[0]["restantes"] if Restantes[0]["restantes"] else 0
         
         pedidostotais = db.execute(
-            "SELECT SUM(quantidade) AS pedidostotais FROM pedidos")
+            "SELECT SUM(quantidade) AS pedidostotais FROM pedidos WHERE dia = ?",dia)
         pedidos = pedidostotais[0]["pedidostotais"] if pedidostotais[0]["pedidostotais"] else '0'
 
         print(f"caixinha = {caixinha}")
@@ -674,10 +676,10 @@ def alterarValor(data):
         if categoria == "Caixinha":
             db.execute(
                 'UPDATE pagamentos SET caixinha = caixinha + ? WHERE dia = ?', valor, dia)
-            db.execute("INSERT INTO pedidos (pedido,quantidade,preco,comanda,ordem) VALUES (?,?,?,?,?)", "CAIXINHA", 1, valor, comanda, 0)
+            db.execute("INSERT INTO pedidos (pedido,quantidade,preco,comanda,ordem,dia) VALUES (?,?,?,?,?,?)", "CAIXINHA", 1, valor, comanda, 0,dia)
         else:
             db.execute(
-                "INSERT INTO pedidos (pedido,quantidade,preco,comanda,ordem) VALUES (?,?,?,?,?)", "DESCONTO", 1, valor*-1, comanda, 0)
+                "INSERT INTO pedidos (pedido,quantidade,preco,comanda,ordem,dia) VALUES (?,?,?,?,?,?)", "DESCONTO", 1, valor*-1, comanda, 0,dia)
     faturamento(True)
     handle_get_cardapio(comanda)
 
@@ -691,10 +693,10 @@ def calcular_faturamento(dia):
     dia_formatado = dia.strftime('%d/%m')
 
     faturamento_prev = db.execute(
-        "SELECT SUM (preco*quantidade) AS valor_previsto FROM pedidos")
+        "SELECT SUM (preco*quantidade) AS valor_previsto FROM pedidos WHERE dia = ?",dia)
     faturamento_previsto = faturamento_prev[0]['valor_previsto'] if faturamento_prev[0]['valor_previsto'] else '0'
     drinks = db.execute(
-        "SELECT SUM(quantidade) AS totaldrink FROM pedidos WHERE categoria =?", 2)
+        "SELECT SUM(quantidade) AS totaldrink FROM pedidos WHERE categoria =? AND dia = ?", 2,dia)
 
     drink = drinks[0]['totaldrink'] if drinks[0]['totaldrink'] else '0'
 
@@ -702,13 +704,13 @@ def calcular_faturamento(dia):
     print(faturamento_previsto)
     print(f"drinks: {drink}")
     porcaos = db.execute(
-        "SELECT SUM(quantidade) AS totalporcao FROM pedidos WHERE categoria =?", 3)
+        "SELECT SUM(quantidade) AS totalporcao FROM pedidos WHERE categoria =? AND dia = ?", 3,dia)
     porcao = porcaos[0]["totalporcao"] if porcaos[0]["totalporcao"] else 0
     Restantes = db.execute(
-        "SELECT SUM(quantidade) AS restantes FROM pedidos WHERE categoria = ?", 1)
+        "SELECT SUM(quantidade) AS restantes FROM pedidos WHERE categoria = ? AND dia = ?", 1,dia)
     restante = Restantes[0]["restantes"] if Restantes[0]["restantes"] else 0
     pedidostotais = db.execute(
-        "SELECT SUM(quantidade) AS pedidostotais FROM pedidos")
+        "SELECT SUM(quantidade) AS pedidostotais FROM pedidos WHERE dia = ?",dia)
     pedidos = pedidostotais[0]["pedidostotais"] if pedidostotais[0]["pedidostotais"] else '0'
     return ({'faturamento_previsto': faturamento_previsto,
              'drink': drink,
@@ -719,31 +721,33 @@ def calcular_faturamento(dia):
 
 @socketio.on('atualizar_pedidos')
 def handle_atualizar_pedidos(data):
+    dia = datetime.now(brazil).date()
     p = data.get('pedidoAlterado')
     usuario=data.get('usuario')
     alteracoes=f'{p["pedido"]}, '
     preco = db.execute(
-        'SELECT comanda,preco,quantidade,extra,pedido FROM pedidos WHERE id = ?', p['id'])
+        'SELECT comanda,preco,quantidade,extra,pedido FROM pedidos WHERE id = ? AND dia = ?', p['id'],dia)
     if preco : 
         p2 = preco[0]
         dif={k:(p[k],p2[k]) for k in p.keys() & p2.keys() if p[k]!=p2[k]}.keys()
         for key in dif:
             alteracoes+=f'{key} de {p2[key]} para {p[key]} '
         print(alteracoes)
-        db.execute("UPDATE pedidos SET comanda = ?, pedido = ?, quantidade = ?, extra = ?,preco = ? WHERE id = ?",
-               p["comanda"], p["pedido"], p["quantidade"], p["extra"], p["preco"], p["id"])
+        db.execute("UPDATE pedidos SET comanda = ?, pedido = ?, quantidade = ?, extra = ?,preco = ? WHERE id = ? AND dia = ?",
+               p["comanda"], p["pedido"], p["quantidade"], p["extra"], p["preco"], p["id"],dia)
     insertAlteracoesTable('pedidos',alteracoes,'editou','Tela Pedidos',usuario)
     handle_get_cardapio(str(p["comanda"]))
 
 
 @socketio.on('desfazer_pagamento')
 def desfazer_pagamento(data):
+    dia = datetime.now(brazil).date()
     comanda = data.get('comanda')
     print(comanda)
-    prec = db.execute('SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ?',comanda,1)
+    prec = db.execute('SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?',comanda,1,dia)
 
     db.execute(
-        'UPDATE pedidos SET ordem = ordem-? WHERE comanda = ? AND ordem>?', 1, comanda, 0)
+        'UPDATE pedidos SET ordem = ordem-? WHERE comanda = ? AND ordem>? AND dia = ?', 1, comanda, 0,dia)
     db.execute(
         'UPDATE valores_pagos SET ordem = ordem - ? WHERE comanda = ?', 1, comanda)
     
@@ -753,7 +757,6 @@ def desfazer_pagamento(data):
         valor = db.execute("SELECT valor_pago FROM valores_pagos WHERE ordem = ? AND comanda = ?",0,comanda)
         if valor:
             preco -= float(valor[0]['valor_pago'])
-        dia = datetime.now(brazil).date()
         db.execute(
         'UPDATE pagamentos SET faturamento = faturamento - ? WHERE dia = ?', float(preco), dia)
         print(f'preco DESFAZER PAGAMNTO : {preco}')
@@ -789,19 +792,13 @@ def handle_delete_comanda(data):
                     'UPDATE pagamentos SET faturamento = ? WHERE dia = ?',
                     valor_pago + antigo_valor, dia
                 )
-            else:
-                # Corrigido o SQL, removendo a vírgula desnecessária
-                db.execute(
-                    'INSERT INTO pagamentos (dia, faturamento) VALUES (?, ?)',
-                    dia, valor_pago
-                )
 
         # Apagar o valor pago referente à comanda
         db.execute(
             'UPDATE valores_pagos SET ordem = ordem +? WHERE comanda = ?', 1, comanda)
 
         # Atualizar a ordem da comanda
-        db.execute('UPDATE pedidos SET ordem = ordem +? WHERE comanda = ?',
+        db.execute('UPDATE pedidos SET ordem = ordem +? WHERE comanda = ? AND dia = ?',dia,
                    1, comanda)
         faturamento(True)
         handle_get_cardapio(comanda)
@@ -844,8 +841,8 @@ def pagar_parcial(data):
             'UPDATE valores_pagos SET valor_pago = ? WHERE comanda = ? AND ordem = ?', valor_total, comanda, 0)
 
     total_comanda = db.execute('''
-            SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ?
-        ''', comanda, 0)
+            SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?
+        ''', comanda, 0,dia)
     print(total_comanda)
     if valor_total >= float(total_comanda[0]['total']):
         handle_delete_comanda(comanda)
@@ -885,13 +882,14 @@ def inserir_preparo(data):
     estado = data.get('estado')
     horario = datetime.now(pytz.timezone(
         "America/Sao_Paulo")).strftime('%H:%M')
+    dia = datetime.now(brazil).date()
 
     if estado == 'Pronto':
-        db.execute('UPDATE pedidos SET fim = ? WHERE id = ?', horario, id)
+        db.execute('UPDATE pedidos SET fim = ? WHERE id = ? AND dia = ?', horario, id,dia)
     elif estado == 'Em Preparo':
-        db.execute('UPDATE pedidos SET comecar = ? WHERE id = ?', horario, id)
+        db.execute('UPDATE pedidos SET comecar = ? WHERE id = ? AND dia = ?', horario, id,dia)
 
-    db.execute('UPDATE pedidos SET estado = ? WHERE id = ?',
+    db.execute('UPDATE pedidos SET estado = ? WHERE id = ? AND dia = ?',dia,
                estado, id)
     getPedidos(True)
 
@@ -937,18 +935,19 @@ def atualizar__comanda(data):
     print(itensAlterados)
     comanda = data.get('comanda')
     usuario = data.get('username')
+    dia = datetime.now(brazil).date()
     for i in itensAlterados:
 
         item = i['pedido']
-        antes_dic = db.execute('SELECT quantidade FROM pedidos WHERE pedido = ? and ordem = ?',item,0)
+        antes_dic = db.execute('SELECT quantidade FROM pedidos WHERE pedido = ? AND ordem = ? AND dia = ?',item,0,dia)
         antes = antes_dic[0]['quantidade']
 
         quantidade = float(i['quantidade'])
         print(f'quantidade = {quantidade}')
         if quantidade == 0:
             quantidade_total_dic = db.execute('''SELECT quantidade,id FROM pedidos
-            WHERE pedido = ? AND comanda = ? AND ordem = ?;
-                ''', item, comanda, 0)
+            WHERE pedido = ? AND comanda = ? AND ordem = ? AND dia = ?;
+                ''', item, comanda,dia, 0)
             quantidade_total = 0
             for j in quantidade_total_dic:
                 quantidade_total += float(j['quantidade'])
@@ -962,15 +961,15 @@ def atualizar__comanda(data):
 
 
             db.execute(
-                'DELETE FROM pedidos WHERE pedido = ? AND comanda = ? AND ordem = ?', item, comanda, 0)
+                'DELETE FROM pedidos WHERE pedido = ? AND comanda = ? AND ordem = ? AND dia = ?', item, comanda, 0,dia)
         else:
             print(i['preco'])
             preco = float(i['preco'])/quantidade
             print(f'quantidade {quantidade}')
             print(f'preco {preco}')
             quantidade_total_dic = db.execute('''SELECT quantidade,id FROM pedidos
-                WHERE pedido = ? AND comanda = ? AND ordem = ? AND preco / quantidade = ?;
-                    ''', item, comanda, 0, preco)
+                WHERE pedido = ? AND comanda = ? AND ordem = ? AND preco / quantidade = ? AND dia = ?;
+                    ''', item, comanda, 0, preco,dia)
             quantidade_total = 0
             for j in quantidade_total_dic:
                 quantidade_total += float(j['quantidade'])
@@ -981,7 +980,7 @@ def atualizar__comanda(data):
             if quantidade_atualizada < 0:
                 quantidade_atualizada *= -1
                 ids = db.execute(
-                    'SELECT id,quantidade FROM pedidos WHERE pedido = ? AND comanda = ? AND ordem = ?', item, comanda, 0)
+                    'SELECT id,quantidade FROM pedidos WHERE pedido = ? AND comanda = ? AND ordem = ? AND dia = ?', item, comanda, 0,dia)
                 verifEstoq = db.execute(
                     'SELECT * FROM estoque WHERE item = ?', item)
                 if verifEstoq:
@@ -994,17 +993,17 @@ def atualizar__comanda(data):
                         print(f'k["quantidade"] {k["quantidade"]}')
                         if float(k['quantidade']) <= quantidade_atualizada:
                             db.execute(
-                                'DELETE FROM pedidos WHERE id = ?', k['id'])
+                                'DELETE FROM pedidos WHERE id = ? AND dia = ?', k['id'],dia)
                             quantidade_atualizada -= float(k['quantidade'])
                         else:
                             db.execute(
-                                'UPDATE pedidos SET  preco = preco/quantidade * (quantidade - ?),quantidade = quantidade - ? WHERE id = ?', quantidade_atualizada, quantidade_atualizada, k['id'])
+                                'UPDATE pedidos SET  preco = preco/quantidade * (quantidade - ?),quantidade = quantidade - ? WHERE id = ? AND dia = ?', quantidade_atualizada, quantidade_atualizada, k['id'],dia)
                             quantidade_atualizada -= float(k['quantidade'])
 
             else:
                 print(quantidade_total_dic)
-                db.execute('UPDATE pedidos SET quantidade = quantidade + ?,preco = preco + ? WHERE pedido = ? AND comanda = ? AND ordem = ? AND id = ?',
-                           quantidade_atualizada, preco_atualizado, item, comanda, 0, quantidade_total_dic[0]['id'])
+                db.execute('UPDATE pedidos SET quantidade = quantidade + ?,preco = preco + ? WHERE pedido = ? AND comanda = ? AND ordem = ? AND id = ? AND dia = ?',
+                           quantidade_atualizada, preco_atualizado, item, comanda, 0, quantidade_total_dic[0]['id'],dia)
                 verifEstoq = db.execute(
                     'SELECT * FROM estoque WHERE item = ?', item)
                 if verifEstoq:
@@ -1021,11 +1020,12 @@ def atualizar__comanda(data):
                                     FROM pedidos
                                     WHERE comanda = ?
                                     AND ordem = 0
+                                    AND dia = ?
                                     GROUP BY pedido
                                     HAVING SUM(quantidade) = 0
                                 ) subquery
                             );
-                        ''', comanda)
+                        ''', comanda,dia)
     
     getEstoque(True)
     handle_get_cardapio(comanda)
@@ -1034,6 +1034,7 @@ def atualizar__comanda(data):
 def handle_get_cardapio(data):
     print('get_cardapio')
     try:
+        dia = datetime.now(brazil).date()
         if type(data) == str:
             fcomanda = data
             ordem = 0
@@ -1047,10 +1048,10 @@ def handle_get_cardapio(data):
             valor_pago = db.execute(
                 'SELECT valor_pago FROM valores_pagos WHERE comanda = ? AND ordem = ?', fcomanda, ordem)
             total_comanda = db.execute('''
-                SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ?
-            ''', fcomanda, ordem)
+                SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?
+            ''', fcomanda, ordem,dia)
             v_comanda_existe = db.execute(
-                'SELECT pedido FROM pedidos WHERE comanda = ? AND ordem = ?', fcomanda, ordem)
+                'SELECT pedido FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?', fcomanda, ordem,dia)
 
             if v_comanda_existe:
                 preco_total = float(
@@ -1062,10 +1063,10 @@ def handle_get_cardapio(data):
 
                 dados = db.execute('''
                     SELECT pedido,id,ordem,nome,extra, SUM(quantidade) AS quantidade, SUM(preco) AS preco
-                    FROM pedidos WHERE comanda =? AND ordem = ? GROUP BY pedido, (preco/quantidade)
-                ''', fcomanda, ordem)
+                    FROM pedidos WHERE comanda =? AND ordem = ? AND dia = ? GROUP BY pedido, (preco/quantidade)
+                ''', fcomanda, ordem,dia)
                 nomes = db.execute(
-                    'SELECT nome FROM pedidos WHERE comanda = ? AND ordem = ? AND nome != ? GROUP BY nome', fcomanda, ordem, '-1')
+                    'SELECT nome FROM pedidos WHERE comanda = ? AND ordem = ? AND nome != ? AND dia = ? GROUP BY nome', fcomanda, ordem, '-1',dia)
                 print(dados)
                 print(type(dados))
                 # Emitir os dados mais recentes da comanda e atualizar no frontend
@@ -1078,8 +1079,8 @@ def handle_get_cardapio(data):
         else:
             dados = db.execute('''
                     SELECT pedido,id,ordem,nome,extra, SUM(quantidade) AS quantidade, SUM(preco) AS preco
-                    FROM pedidos WHERE comanda =? AND ordem = ? GROUP BY pedido, (preco/quantidade)
-                ''', fcomanda, ordem)
+                    FROM pedidos WHERE comanda =? AND ordem = ? AND dia = ? GROUP BY pedido, (preco/quantidade)
+                ''', fcomanda, ordem,dia)
             emit('preco', {'preco_a_pagar': '', 'preco_total': '', 'preco_pago': '', 'dados': dados, 'nomes': '',
                            'comanda': fcomanda}, broadcast=True)
         getPedidos(True)
