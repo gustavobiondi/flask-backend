@@ -33,7 +33,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 import shutil
 
 if var:
-    DATABASE_PATH = "/dados.db"
+    DATABASE_PATH = "/data/dados.db"
     if not os.path.exists(DATABASE_PATH):
         shutil.copy("dados.db", DATABASE_PATH)
     db = SQL("sqlite:///" + DATABASE_PATH)
