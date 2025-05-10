@@ -22,7 +22,7 @@ import subprocess
 import requests
 
 
-var = False
+var = True
 if var:
     subprocess.run(['python','manipule.py'])
 
@@ -33,7 +33,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 import shutil
 
 if var:
-    DATABASE_PATH = "/data/dados.db"
+    DATABASE_PATH = "/dados.db"
     if not os.path.exists(DATABASE_PATH):
         shutil.copy("dados.db", DATABASE_PATH)
     db = SQL("sqlite:///" + DATABASE_PATH)
@@ -359,6 +359,7 @@ def editEstoque(data):
     estoque_ideal = data.get('estoqueIdeal')
     estoque = data.get('estoque')
     usuario = data.get('username')
+    token_user = data.get('token')
     print("item", tipo)
     print("item", item)
     print("item", quantidade)
@@ -396,13 +397,23 @@ def editEstoque(data):
             db.execute(f"UPDATE {estoque} SET item=? WHERE item=?",novoNome,item ) 
 
     insertAlteracoesTable(estoque,alteracao,tipo,f'Botao + no Editar {estoque}',usuario)
+    alteracao=f"{usuario} {tipo} {alteracao}"
+    enviar_notificacao_expo('ADM','Estoque Editado',alteracao,token_user)
 
     if estoque=='estoque_geral':
         getEstoqueGeral(True)
     else: getEstoque(True)
             
-
-
+@socketio.on("editCargo")
+def edit_cargo(data):
+    print('editcargo')
+    usuario=data.get("usuario")
+    print (usuario)
+    cargo=data.get("cargo")
+    print(cargo)
+    db.execute("UPDATE usuarios SET cargo = ? WHERE username = ?", cargo, usuario)
+    users(True)
+    
      
 
 
@@ -725,6 +736,7 @@ def handle_atualizar_pedidos(data):
     p = data.get('pedidoAlterado')
     usuario=data.get('usuario')
     alteracoes=f'{p["pedido"]}, '
+    token_user = data.get('token')
     preco = db.execute(
         'SELECT comanda,preco,quantidade,extra,pedido FROM pedidos WHERE id = ? AND dia = ?', p['id'],dia)
     if preco : 
@@ -736,6 +748,8 @@ def handle_atualizar_pedidos(data):
         db.execute("UPDATE pedidos SET comanda = ?, pedido = ?, quantidade = ?, extra = ?,preco = ? WHERE id = ? AND dia = ?",
                p["comanda"], p["pedido"], p["quantidade"], p["extra"], p["preco"], p["id"],dia)
     insertAlteracoesTable('pedidos',alteracoes,'editou','Tela Pedidos',usuario)
+    alteracoes=f'{usuario} Editou {alteracoes}'
+    enviar_notificacao_expo('ADM','Pedido Editado',alteracoes,token_user,usuario)
     handle_get_cardapio(str(p["comanda"]))
 
 
@@ -898,6 +912,7 @@ def inserir_preparo(data):
 def atualizar_estoque_geral(data):
     usuario = data.get('username')
     itensAlterados = data.get('itensAlterados')
+    token_user = data.get('token')
     for i in itensAlterados:
         item = i['item']
         quantidade = i['quantidade']
@@ -906,7 +921,7 @@ def atualizar_estoque_geral(data):
         db.execute('UPDATE estoque_geral SET quantidade = ? WHERE item = ?',
                    float(quantidade), item)
         insertAlteracoesTable('estoque geral',f'{i["item"]} de {int(anterior)} para {i["quantidade"]}','editou','Editar Estoque Geral',usuario)
-        
+        enviar_notificacao_expo('ADM','Estoque Geral Atualizado',f'{usuario} Editou {i["item"]} de {int(anterior)} para {i["quantidade"]}',token_user)
     getEstoqueGeral(True)
 
 
@@ -914,6 +929,7 @@ def atualizar_estoque_geral(data):
 def atualizar_estoque(data):
     usuario = data.get('username')
     itensAlterados = data.get('itensAlterados')
+    token_user = data.get('token')
     for i in itensAlterados:
         item = i['item']
         anterior=''
@@ -923,6 +939,7 @@ def atualizar_estoque(data):
         db.execute('UPDATE estoque SET quantidade = ? WHERE item = ?',
                    float(quantidade), item)
         insertAlteracoesTable('estoque carrinho',f'{i["item"]} de {int(anterior)} para {i["quantidade"]}','editou','Editar Estoque',usuario)
+        enviar_notificacao_expo('ADM','Estoque Atualizado',f'{usuario} Editou {i["item"]} de {int(anterior)} para {i["quantidade"]}',token_user)
         
         
     getEstoque(True)
@@ -936,6 +953,7 @@ def atualizar__comanda(data):
     comanda = data.get('comanda')
     usuario = data.get('username')
     dia = datetime.now(brazil).date()
+    token_user = data.get('token')
     for i in itensAlterados:
 
         item = i['pedido']
@@ -958,6 +976,7 @@ def atualizar__comanda(data):
                     'UPDATE estoque SET quantidade = quantidade + ? WHERE item = ?', quantidade_total, item)
                 
                 insertAlteracoesTable('Pedido Editado',f'{i["pedido"]} de {antes} para {i["quantidade"]}','editou','Editar Comanda',usuario)
+                enviar_notificacao_expo('ADM','Comanda Editada',f'{usuario} Editou {i["pedido"]} de {antes} para {i["quantidade"]}',token_user)
 
 
             db.execute(
@@ -986,7 +1005,9 @@ def atualizar__comanda(data):
                 if verifEstoq:
                     db.execute(
                         'UPDATE estoque SET quantidade = quantidade + ? WHERE item = ?', quantidade_atualizada, item)
-                insertAlteracoesTable('Pedido Editado',f'{i["pedido"]} de {antes} para {i["quantidade"]}','editou','Editar Comanda',usuario)
+                insertAlteracoesTable('Pedido Editado',f'{i["pedido"]} de {antes} para {i["quantidade"]} na comanda:{comanda} ','editou','Editar Comanda',usuario)
+                enviar_notificacao_expo('ADM','Comanda Editada',f'{usuario} Editou {i["pedido"]} de {antes} para {i["quantidade"]} na comanda:{comanda}',token_user)
+
                 for k in ids:
                     if quantidade_atualizada > 0:
                         print(f'quantidade atualizada {quantidade_atualizada}')
@@ -1009,8 +1030,8 @@ def atualizar__comanda(data):
                 if verifEstoq:
                     db.execute(
                         'UPDATE estoque SET quantidade = quantidade - ? WHERE item = ?', quantidade_atualizada, item)
-                insertAlteracoesTable('Pedido Editado',f'{i["pedido"]} de {antes} para {i["quantidade"]}','editou','Editar Comanda',usuario)
-
+                insertAlteracoesTable('Pedido Editado',f'{i["pedido"]} de {antes} para {i["quantidade"]} na comanda:{comanda}','editou','Editar Comanda',usuario)
+                enviar_notificacao_expo('ADM','Comanda Editada',f'{usuario} Editou {i["pedido"]} de {antes} para {i["quantidade"]} na comanda:{comanda}',token_user)
             db.execute('''
                             DELETE FROM pedidos
                             WHERE id IN (
@@ -1133,6 +1154,7 @@ def adicionarCardapio(data):
     preco = data.get('preco')
     categoria = data.get('categoria')
     usuario = data.get('username')
+    token_user = data.get('token')
     if not item or not preco or not categoria:
         emit('Erro',{'Alguma categoria faltando'})
     else:
@@ -1160,6 +1182,8 @@ def adicionarCardapio(data):
             db.execute('INSERT INTO cardapio (item,categoria_id,preco) VALUES (?,?,?)',item,1,float(preco))
 
         insertAlteracoesTable('Cardapio',alteracoes,'Adicionou','Tela Cardapio',usuario)
+        alteracoes=f"{usuario} Adicionou {alteracoes}"
+        enviar_notificacao_expo('ADM','Item Adicionado Cardapio',alteracoes,token_user)
         getCardapio(True)                 
 
 
@@ -1172,6 +1196,7 @@ def editarCardapio(data):
     novoNome = data.get('novoNome')
     opcoes = data.get('opcoes')
     usuario = data.get('username')
+    token_user=data.get('token')
     
     
     
@@ -1215,7 +1240,8 @@ def editarCardapio(data):
         print(alteracoes)
 
         insertAlteracoesTable('Cardapio',alteracoes,'Editou','Tela Cardapio',usuario)
-
+        alteracoes=f"{usuario} Editou {alteracoes}"
+        enviar_notificacao_expo('ADM','Cardapio editado',alteracoes,token_user)
         getCardapio(True)
   
 
@@ -1223,10 +1249,12 @@ def editarCardapio(data):
 def removerCardapio(data):
     item=data.get('item')
     usuario = data.get('username')
+    token_user = data.get('token')
     print("Removendo item:", item)
     db.execute("DELETE FROM cardapio WHERE item=?",item)
 
     insertAlteracoesTable('Cardapio',item,'Removeu','Tela Cardapio',usuario)
+    enviar_notificacao_expo('ADM','Item Removido Cardapio',f"{usuario} Removeu {item} do Cardapio",token_user)
     getCardapio(True)
     
 

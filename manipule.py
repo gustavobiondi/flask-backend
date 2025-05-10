@@ -4,15 +4,15 @@ import shutil
 import os
 
 
-var = False
+var = True
 if var:
-    DATABASE_PATH = "/data/dados.db"
+    DATABASE_PATH = "/dados.db"
     if not os.path.exists(DATABASE_PATH):
         shutil.copy("dados.db", DATABASE_PATH)
     db = SQL("sqlite:///" + DATABASE_PATH)
 else:
     db = SQL("sqlite:///data/dados.db")
-ontem = datetime.now().date()-timedelta(days=-1)
+
 hoje = datetime.now().date()
 
 db.execute('ALTER TABLE pedidos ADD COLUMN dia TEXT')
