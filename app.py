@@ -812,8 +812,8 @@ def handle_delete_comanda(data):
             'UPDATE valores_pagos SET ordem = ordem +? WHERE comanda = ?', 1, comanda)
 
         # Atualizar a ordem da comanda
-        db.execute('UPDATE pedidos SET ordem = ordem +? WHERE comanda = ? AND dia = ?',dia,
-                   1, comanda)
+        db.execute('UPDATE pedidos SET ordem = ordem +? WHERE comanda = ? AND dia = ?',1,
+                   comanda,dia)
         faturamento(True)
         handle_get_cardapio(comanda)
         emit('comanda_deleted', {'fcomanda': comanda}, broadcast=True)
