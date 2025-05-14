@@ -783,6 +783,7 @@ def desfazer_pagamento(data):
 @socketio.on('delete_comanda')
 def handle_delete_comanda(data):
     try:
+        dia = datetime.now(brazil).date()
         # Identificar a comanda recebida
         if type(data) == str:
             comanda = data
@@ -790,7 +791,6 @@ def handle_delete_comanda(data):
             comanda = data.get('fcomanda')
             valor_pago = float(data.get('valor_pago'))
             caixinha = data.get('caixinha')
-            dia = datetime.now(brazil).date()
             print(f'Data de hoje: {dia}')
             if caixinha:
                 db.execute("UPDATE pagamentos SET caixinha = caixinha + ? WHERE dia = ?",float(caixinha),dia)
