@@ -903,8 +903,8 @@ def inserir_preparo(data):
     elif estado == 'Em Preparo':
         db.execute('UPDATE pedidos SET comecar = ? WHERE id = ? AND dia = ?', horario, id,dia)
 
-    db.execute('UPDATE pedidos SET estado = ? WHERE id = ? AND dia = ?',dia,
-               estado, id)
+    db.execute('UPDATE pedidos SET estado = ? WHERE id = ? AND dia = ?',
+               estado, id,dia)
     getPedidos(True)
 
 
