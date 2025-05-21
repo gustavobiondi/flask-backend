@@ -14,6 +14,4 @@ else:
 
 hoje = datetime.now().date()
 
-db.execute("DROP TABLE IF EXISTS pagamentos")
-db.execute("CREATE TABLE IF NOT EXISTS pagamentos (id INTEGER PRIMARY KEY AUTOINCREMENT, dia TEXT, valor FLOAT, forma_de_pagamento TEXT, comanda TEXT, ordem INTEGER)")
-print(db.execute("SELECT * FROM pagamentos"))
+db.execute('ALTER TABLE IF EXISTS pagamentos ADD COLUMN tipo TEXT')
