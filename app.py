@@ -91,26 +91,7 @@ def enviar_notificacao_expo(cargo,titulo,corpo,token_user,canal="default"):
 
 
 
-@app.route('/static/<path:filename>')
-def serve_static(filename):
-    return send_from_directory('static', filename)
-
-
-
 def atualizar_faturamento_diario():
-    hoje = datetime.now(brazil).date()
-    ontem = (datetime.now(brazil) - timedelta(days=1)).date()
-    dados = calcular_faturamento(ontem)
-    faturamento_prev = dados['faturamento_previsto']
-    drinks = dados['drink']
-    porcao = dados['porcao']
-    restantes = dados['restante']
-    pedidos = dados['pedidos']
-    db.execute("UPDATE pagamentos SET faturamento_prev = ?, drinks =?, porcoes=?, restantes=?, totais_pedidos=? WHERE dia = ?",
-               faturamento_prev, drinks, porcao, restantes, pedidos, ontem)
-    db.execute("INSERT INTO pagamentos (dia,faturamento, faturamento_prev, drinks, porcoes, restantes, totais_pedidos,caixinha) VALUES (?,0, 0, 0, 0, 0, 0,0)", hoje)
-    print(db.execute("SELECT * FROM pagamentos"))
-    db.execute("DELETE FROM valores_pagos")
     db.execute('UPDATE usuarios SET liberado = ? WHERE cargo != ?',0,'ADM')
     db.execute('DELETE FROM tokens WHERE cargo!=?','ADM')
 
@@ -161,55 +142,15 @@ def pegar_pedidos():
     ordem = data.get('ordem')
     print(f'ORDEM : {ordem}')
     dia = datetime.now(brazil).date()
-    if int(ordem) != 0:
-        # Executando a consulta no banco de dados
-        dados = db.execute('''
+    dados = db.execute('''
             SELECT pedido, id, ordem, SUM(quantidade) AS quantidade, SUM(preco) AS preco
             FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?
-            GROUP BY pedido
+            GROUP BY pedido, (preco/quantidade)
         ''', comanda, int(ordem),dia)
-        valor_pago = db.execute(
-            'SELECT valor_pago FROM valores_pagos WHERE comanda = ?', comanda)
-        total_comanda = db.execute('''
-            SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?
-        ''', comanda, int(ordem),dia)
-        v_comanda_existe = db.execute(
-            'SELECT pedido FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?', comanda, int(ordem),dia)
-
-        if v_comanda_existe:
-            preco_total = float(
-                total_comanda[0]['total']) if total_comanda else 0
-            preco_pago = float(
-                valor_pago[0]['valor_pago']) if valor_pago else 0
-            print(preco_pago)
-            print(preco_total)
-            return {'data': dados, 'preco': preco_total-preco_pago}
+    if int(ordem) != 0:
+        return{'data':dados,'preco':''}
     else:
-        # Chama a função para pegar o cardápio se ordem for 0
-        valor_pago = db.execute(
-            'SELECT valor_pago FROM valores_pagos WHERE comanda = ?', comanda)
-        total_comanda = db.execute('''
-            SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?
-        ''', comanda, 0,dia)
-        v_comanda_existe = db.execute(
-            'SELECT pedido FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?', comanda, 0,dia)
-
-        if v_comanda_existe:
-            preco_total = float(
-                total_comanda[0]['total']) if total_comanda else 0
-            preco_pago = float(
-                valor_pago[0]['valor_pago']) if valor_pago else 0
-            print(preco_pago)
-            print(preco_total)
-
-            dados = db.execute('''
-                SELECT pedido,id,ordem, SUM(quantidade) AS quantidade, SUM(preco) AS preco
-                FROM pedidos WHERE comanda =? AND ordem = ? AND dia = ? GROUP BY pedido
-            ''', comanda, 0,dia)
-            print(dados)
-            print(type(dados))
-            return {'data': dados, 'preco': preco_total-preco_pago}
-    return {'data': '', 'preco': ''}
+        return{'data':dados,'preco':''}
 
 
 
@@ -616,61 +557,71 @@ def faturamento(data):
         dia = datetime.now(brazil).date()
         emitir = data
         dia_formatado = dia.strftime('%d/%m')
+    metodosDict=db.execute("SELECT forma_de_pagamento,SUM(valor) AS valor_total FROM pagamentos WHERE dia =? GROUP BY forma_de_pagamento",dia)
+    dinheiro=0
+    credito=0
+    debito=0
+    pix=0
+    for row in metodosDict:
+        if row["forma_de_pagamento"]=="dinheiro":
+            dinheiro+=row["valor_total"]
+        elif row["forma_de_pagamento"]=="credito":
+            credito+=row["valor_total"]
+        elif row["forma_de_pagamento"]=="debito":
+            debito+=row["valor_total"]
+        elif row["forma_de_pagamento"]=="pix":
+            pix+=row["valor_total"]
 
     # Executar a consulta e pegar o resultado
-    faturament = db.execute(
-        'SELECT * FROM pagamentos WHERE dia = ?', dia)
-    if faturament:
-        faturamento = faturament[0]['faturamento'] if faturament else '0'
-        caixinha = faturament[0]['caixinha'] if faturament[0]['caixinha'] else '0'
-        faturamento_prev = db.execute(
-            "SELECT SUM (preco) AS valor_previsto FROM pedidos WHERE pedido != ? AND dia = ?",'CAIXINHA',dia)
-        faturamento_previsto = faturamento_prev[0]['valor_previsto'] if faturamento_prev[0]['valor_previsto'] else '0'
-        drinks = db.execute(
-            "SELECT SUM(quantidade) AS totaldrink,SUM(preco)as preco_drinks FROM pedidos WHERE categoria =? AND dia = ?", 2,dia)
-        preco_drink = drinks[0]['preco_drinks'] if drinks[0]['preco_drinks'] else '0'
-        drink = drinks[0]['totaldrink'] if drinks[0]['totaldrink'] else '0'
+    faturamentoDict = db.execute('SELECT SUM(valor) AS valor_total,tipo FROM pagamentos WHERE dia = ? GROUP BY tipo',dia)
+    caixinha = 0
+    dezporcento = 0
+    faturamento = 0
+    desconto = 0
+    for row in faturamentoDict:
+        if row['tipo']=='caixinha':
+            caixinha = row['valor_total']
+        elif row['tipo']=='10%':
+            dezporcento = row['valor_total']
+        elif row['tipo']=='desconto' :
+            desconto = row['valor_total']
+        faturamento += row['valor_total'] 
+    faturamento-=desconto
+    
+    pedidosQuantDict = db.execute('SELECT SUM(quantidade) AS quantidade_total,SUM(preco) AS preco_total,categoria,preco FROM pedidos WHERE dia = ? GROUP BY categoria ORDER BY categoria ASC',dia)
+    drink = 0
+    restante = 0
+    porcao = 0
+    faturamento_previsto = 0
+    for row in pedidosQuantDict:
+        if row['categoria'] == 1:
+            restante = row['quantidade_total']
+        elif row['categoria'] == 2:
+            drink = row['quantidade_total']
+        elif row['categoria'] == 3:
+            porcao = row['quantidade_total']
+        faturamento_previsto+= row['preco_total']
+    pedidos = drink+restante+porcao
 
-        print(f'faturamento = {faturamento}')
-        print(faturamento_previsto)
-        print(f"drinks: {drink}")
-        porcaos = db.execute(
-            "SELECT SUM(quantidade) AS totalporcao, SUM(preco) AS preco_porcoes FROM pedidos WHERE categoria =? AND dia = ?", 3,dia)
-        porcao = porcaos[0]["totalporcao"] if porcaos[0]["totalporcao"] else 0
-        
-        Restantes = db.execute(
-            "SELECT SUM(quantidade) AS restantes,SUM(preco) as preco_restantes FROM pedidos WHERE categoria = ? AND dia = ?", 1,dia)
-        restante = Restantes[0]["restantes"] if Restantes[0]["restantes"] else 0
-        
-        pedidostotais = db.execute(
-            "SELECT SUM(quantidade) AS pedidostotais FROM pedidos WHERE dia = ?",dia)
-        pedidos = pedidostotais[0]["pedidostotais"] if pedidostotais[0]["pedidostotais"] else '0'
+    
 
-        print(f"caixinha = {caixinha}")
-
-        emit('faturamento_enviar', {'dia': str(dia_formatado),
-                                    'faturamento': faturamento,
-                                    'faturamento_previsto': faturamento_previsto,
-                                    'drink': drink,
-                                    'porcao': porcao,
-                                    "restante": restante,
-                                    "pedidos": pedidos,
-                                    "caixinha": caixinha,
-                                    },
-            broadcast=emitir,
-            )
-    else:
-        emit('faturamento_enviar', {'dia': str(dia_formatado),
-                                    'faturamento': 0,
-                                    'faturamento_previsto': 0,
-                                    'drink': 0,
-                                    'porcao': 0,
-                                    "restante": 0,
-                                    "pedidos": 0,
-                                    "caixinha": 0,
-                                    },
-            broadcast=emitir,
-            )
+    emit('faturamento_enviar', {'dia': str(dia_formatado),
+                                'faturamento': faturamento,
+                                'faturamento_previsto': faturamento_previsto,
+                                'drink': drink,
+                                'porcao': porcao,
+                                "restante": restante,
+                                "pedidos": pedidos,
+                                "caixinha": caixinha,
+                                "dezporcento":dezporcento,
+                                "desconto":desconto,
+                                "pix":pix,
+                                "debito":debito,
+                                "credito":credito,
+                                "dinheiro":dinheiro
+                                },
+        broadcast=emitir,
+        )
     
 
 
@@ -678,56 +629,14 @@ def faturamento(data):
 def alterarValor(data):
     dia = datetime.now(brazil).date()
     valor = float(data.get('valor'))
-    categoria = data.get('categoria')
+    tipo = data.get('categoria')
     comanda = data.get('comanda')
-    print("VALOR :", valor)
-    print('categoria:', categoria)
-    print(f'comanda: {comanda}')
-    if data:
-        if categoria == "Caixinha":
-            db.execute(
-                'UPDATE pagamentos SET caixinha = caixinha + ? WHERE dia = ?', valor, dia)
-            db.execute("INSERT INTO pedidos (pedido,quantidade,preco,comanda,ordem,dia) VALUES (?,?,?,?,?,?)", "CAIXINHA", 1, valor, comanda, 0,dia)
-        else:
-            db.execute(
-                "INSERT INTO pedidos (pedido,quantidade,preco,comanda,ordem,dia) VALUES (?,?,?,?,?,?)", "DESCONTO", 1, valor*-1, comanda, 0,dia)
+    print(tipo)
+    print(valor)
+    db.execute('INSERT INTO pagamentos(valor,comanda,ordem,tipo,dia) VALUES (?,?,?,?,?)',valor,comanda,0,tipo,dia)
     faturamento(True)
     handle_get_cardapio(comanda)
 
-
-def calcular_faturamento(dia):
-
-    # Executar a consulta e pegar o resultado
-    faturament = db.execute(
-        'SELECT faturamento FROM pagamentos WHERE dia = ?', dia)
-    faturamento = faturament[0]['faturamento'] if faturament else '0'
-    dia_formatado = dia.strftime('%d/%m')
-
-    faturamento_prev = db.execute(
-        "SELECT SUM (preco*quantidade) AS valor_previsto FROM pedidos WHERE dia = ?",dia)
-    faturamento_previsto = faturamento_prev[0]['valor_previsto'] if faturamento_prev[0]['valor_previsto'] else '0'
-    drinks = db.execute(
-        "SELECT SUM(quantidade) AS totaldrink FROM pedidos WHERE categoria =? AND dia = ?", 2,dia)
-
-    drink = drinks[0]['totaldrink'] if drinks[0]['totaldrink'] else '0'
-
-    print(f'faturamento = {faturamento}')
-    print(faturamento_previsto)
-    print(f"drinks: {drink}")
-    porcaos = db.execute(
-        "SELECT SUM(quantidade) AS totalporcao FROM pedidos WHERE categoria =? AND dia = ?", 3,dia)
-    porcao = porcaos[0]["totalporcao"] if porcaos[0]["totalporcao"] else 0
-    Restantes = db.execute(
-        "SELECT SUM(quantidade) AS restantes FROM pedidos WHERE categoria = ? AND dia = ?", 1,dia)
-    restante = Restantes[0]["restantes"] if Restantes[0]["restantes"] else 0
-    pedidostotais = db.execute(
-        "SELECT SUM(quantidade) AS pedidostotais FROM pedidos WHERE dia = ?",dia)
-    pedidos = pedidostotais[0]["pedidostotais"] if pedidostotais[0]["pedidostotais"] else '0'
-    return ({'faturamento_previsto': faturamento_previsto,
-             'drink': drink,
-             'porcao': porcao,
-             "restante": restante,
-             "pedidos": pedidos, })
 
 
 @socketio.on('atualizar_pedidos')
@@ -757,25 +666,10 @@ def handle_atualizar_pedidos(data):
 def desfazer_pagamento(data):
     dia = datetime.now(brazil).date()
     comanda = data.get('comanda')
-    print(comanda)
-    prec = db.execute('SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?',comanda,1,dia)
-
-    db.execute(
-        'UPDATE pedidos SET ordem = ordem-? WHERE comanda = ? AND ordem>? AND dia = ?', 1, comanda, 0,dia)
-    db.execute(
-        'UPDATE valores_pagos SET ordem = ordem - ? WHERE comanda = ?', 1, comanda)
-    
-    print(prec)
-    if prec[0]['total']:
-        preco = float(prec[0]['total'])
-        valor = db.execute("SELECT valor_pago FROM valores_pagos WHERE ordem = ? AND comanda = ?",0,comanda)
-        if valor:
-            preco -= float(valor[0]['valor_pago'])
-        db.execute(
-        'UPDATE pagamentos SET faturamento = faturamento - ? WHERE dia = ?', float(preco), dia)
-        print(f'preco DESFAZER PAGAMNTO : {preco}')
-
-        faturamento(True)
+    db.execute('DELETE FROM pagamentos WHERE comanda = ? AND ordem = ? AND  dia = ?',comanda,1,dia)
+    db.execute('UPDATE pagamentos SET ordem = ordem - ? WHERE comanda = ? AND dia = ? AND ordem != ?',1,comanda,dia,0)
+    db.execute('UPDATE pedidos SET ordem = ordem - ? WHERE comanda = ? AND dia = ? AND ordem != ?',1,comanda,dia,0)
+    faturamento(True)
     handle_get_cardapio(comanda)
 
 
@@ -783,7 +677,6 @@ def desfazer_pagamento(data):
 @socketio.on('delete_comanda')
 def handle_delete_comanda(data):
     try:
-        dia = datetime.now(brazil).date()
         # Identificar a comanda recebida
         if type(data) == str:
             comanda = data
@@ -791,29 +684,16 @@ def handle_delete_comanda(data):
             comanda = data.get('fcomanda')
             valor_pago = float(data.get('valor_pago'))
             caixinha = data.get('caixinha')
+            forma_de_pagamento = data.get('forma_de_pagamento')
+            print('forma de pagamento', forma_de_pagamento)
+            dia = datetime.now(brazil).date()
             print(f'Data de hoje: {dia}')
+            db.execute('UPDATE pagamentos SET ordem = ordem + ? WHERE comanda = ? AND dia = ?',1,comanda,dia)
+            db.execute('INSERT INTO pagamentos (valor,tipo,forma_de_pagamento,dia,comanda,ordem) VALUES (?,?,?,?,?,?)',valor_pago,'normal',forma_de_pagamento,dia,comanda,1)
             if caixinha:
-                db.execute("UPDATE pagamentos SET caixinha = caixinha + ? WHERE dia = ?",float(caixinha),dia)
-            # Verificar se já existe um pagamento registrado para o dia
-            valor_do_dia = db.execute(
-                # Adicionando tupla para os parâmetros
-                'SELECT * FROM pagamentos WHERE dia = ?', dia)
+                db.execute("INSERT INTO pagamentos (valor,tipo,forma_de_pagamento,dia,ordem,comanda) VALUES (?,?,?,?,?,?)",caixinha,'10%',forma_de_pagamento,dia,1,comanda)
 
-            if valor_do_dia:
-                
-                antigo_valor = float(valor_do_dia[0]['faturamento']) if valor_do_dia[0]['faturamento'] else 0
-                db.execute(
-                    'UPDATE pagamentos SET faturamento = ? WHERE dia = ?',
-                    valor_pago + antigo_valor, dia
-                )
-
-        # Apagar o valor pago referente à comanda
-        db.execute(
-            'UPDATE valores_pagos SET ordem = ordem +? WHERE comanda = ?', 1, comanda)
-
-        # Atualizar a ordem da comanda
-        db.execute('UPDATE pedidos SET ordem = ordem +? WHERE comanda = ? AND dia = ?',1,
-                   comanda,dia)
+        db.execute('UPDATE pedidos SET ordem = ordem +? WHERE comanda = ? AND dia = ?',1,comanda, dia)
         faturamento(True)
         handle_get_cardapio(comanda)
         emit('comanda_deleted', {'fcomanda': comanda}, broadcast=True)
@@ -826,40 +706,30 @@ def handle_delete_comanda(data):
 @socketio.on('pagar_parcial')
 def pagar_parcial(data):
     comanda = data.get('fcomanda')
-    print(f'pagar parcial comanda : ', end='')
-    print(comanda)
-    valor_pago = data.get('valor_pago')
-
+    print(f'pagar parcial comanda : {comanda}')
+    valor_pago = float(data.get('valor_pago'))
+    forma_de_pagamento = data.get('forma_de_pagamento')
+    caixinha = data.get('caixinha') 
+    
     dia = datetime.now(brazil).date()
-    print(f'data de hoje : {dia}')
-    valor_do_dia = db.execute('SELECT * FROM pagamentos WHERE dia = ?', dia)
-    if valor_do_dia:
-        antigo_valor = float(valor_do_dia[0]['faturamento'])
-        db.execute('UPDATE pagamentos SET faturamento = ? WHERE dia = ?',
-                   float(valor_pago)+antigo_valor, dia)
+    
+    totalComandaDict = db.execute('SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?', comanda, 0,dia)
+    valorTotalDict = db.execute('SELECT SUM(valor) as total FROM pagamentos WHERE dia = ? AND comanda = ? AND ordem = ? AND tipo = ?',dia,comanda,1,'normal')
+    
+    if valorTotalDict and valorTotalDict[0]['total']:
+        valorTotal = valorTotalDict[0]['total']
     else:
-        db.execute(
-            'INSERT INTO pagamentos (dia, faturamento) VALUES (?,?)', dia, float(valor_pago))
-
-    preco_pago = db.execute(
-        'SELECT valor_pago FROM valores_pagos WHERE comanda = ? AND ORDEM = ?', comanda, 0)
-
-    if not preco_pago:
-        db.execute('INSERT INTO valores_pagos (comanda,valor_pago,ordem) VALUES(?,?,?)',
-                   comanda, float(valor_pago), 0)
-
-        valor_total = float(valor_pago)
-    else:
-        valor_total = float(valor_pago) + float(preco_pago[0]['valor_pago'])
-        db.execute(
-            'UPDATE valores_pagos SET valor_pago = ? WHERE comanda = ? AND ordem = ?', valor_total, comanda, 0)
-
-    total_comanda = db.execute('''
-            SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?
-        ''', comanda, 0,dia)
-    print(total_comanda)
-    if valor_total >= float(total_comanda[0]['total']):
+        valorTotal = 0
+    
+    db.execute('INSERT INTO pagamentos (valor,tipo,ordem,dia,forma_de_pagamento,comanda) VALUES (?,?,?,?,?,?)',valor_pago,'normal',0,dia,forma_de_pagamento,comanda)
+    
+    if caixinha:
+         db.execute('INSERT INTO pagamentos (valor,tipo,ordem,dia,forma_de_pagamento,comanda) VALUES (?,?,?,?,?,?)',caixinha,'10%',0,dia,forma_de_pagamento,comanda)
+    
+    if valorTotal+valor_pago>=totalComandaDict[0]['total']:
+        db.execute('UPDATE pagamentos SET ordem = ordem + ? WHERE dia = ? AND comanda = ?',1,dia,comanda)
         handle_delete_comanda(comanda)
+    
     handle_get_cardapio(comanda)
 
 
@@ -903,8 +773,8 @@ def inserir_preparo(data):
     elif estado == 'Em Preparo':
         db.execute('UPDATE pedidos SET comecar = ? WHERE id = ? AND dia = ?', horario, id,dia)
 
-    db.execute('UPDATE pedidos SET estado = ? WHERE id = ? AND dia = ?',
-               estado, id,dia)
+    db.execute('UPDATE pedidos SET estado = ? WHERE id = ? AND dia = ?',dia,
+               estado, id)
     getPedidos(True)
 
 
@@ -1051,6 +921,25 @@ def atualizar__comanda(data):
     getEstoque(True)
     handle_get_cardapio(comanda)
 
+@socketio.on('transferir_para_estoque_carrinho')
+def transferir_para_estoque_carrinho(data):
+    itensAlterados = data.get('itensAlterados')
+    token = data.get('token')
+    usuario = data.get('username')
+    for i in itensAlterados:
+        
+        quantidade_antiga = db.execute('SELECT quantidade FROM estoque_geral WHERE item = ?',i['item'])
+        existe_no_estoque = db.execute('SELECT quantidade FROM estoque WHERE item = ?',i['item'])
+        if quantidade_antiga and existe_no_estoque:
+            quantidade_antig = float(quantidade_antiga[0]['quantidade'])
+            quantidade = float(i['quantidade'])
+            db.execute('UPDATE estoque SET quantidade = quantidade + ? WHERE item = ?',quantidade_antig-quantidade,i['item'])
+            getEstoque(True)
+            insertAlteracoesTable('Estoque Carrinho',f'{i["item"]} de {existe_no_estoque[0]["quantidade"]} para {quantidade_antig-quantidade}','editou','Transferir para Estoque Carrinho',usuario)
+            enviar_notificacao_expo('ADM','Estoque Carrinho Tranferir',f'{usuario} Editou {i["item"]} de {existe_no_estoque[0]["quantidade"]} para {quantidade_antig-quantidade}',token)
+    atualizar_estoque_geral(data)
+            
+
 @socketio.on('get_cardapio')
 def handle_get_cardapio(data):
     print('get_cardapio')
@@ -1059,28 +948,19 @@ def handle_get_cardapio(data):
         if type(data) == str:
             fcomanda = data
             ordem = 0
-
         else:
             fcomanda = data.get('fcomanda')
             ordem = data.get('ordem')
-        if not fcomanda:
-            raise ValueError('Comanda não informada')
         if ordem == 0:
-            valor_pago = db.execute(
-                'SELECT valor_pago FROM valores_pagos WHERE comanda = ? AND ordem = ?', fcomanda, ordem)
-            total_comanda = db.execute('''
-                SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?
-            ''', fcomanda, ordem,dia)
-            v_comanda_existe = db.execute(
-                'SELECT pedido FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?', fcomanda, ordem,dia)
-
-            if v_comanda_existe:
-                preco_total = float(
-                    total_comanda[0]['total']) if total_comanda else 0
-                preco_pago = float(
-                    valor_pago[0]['valor_pago']) if valor_pago else 0
-                print(preco_pago)
-                print(preco_total)
+            valor_pago = db.execute('SELECT SUM(valor) AS total FROM pagamentos WHERE comanda = ? AND ordem = ? AND dia = ?', fcomanda, ordem,dia)
+            preco_pago = 0
+            if valor_pago and valor_pago[0]['total']:
+                preco_pago = float(valor_pago[0]['total'])
+            total_comanda = db.execute('SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?', fcomanda, ordem,dia)
+            preco_total = 0
+            if total_comanda and total_comanda[0]['total']:
+                print(total_comanda)
+                preco_total = float(total_comanda[0]['total'])
 
                 dados = db.execute('''
                     SELECT pedido,id,ordem,nome,extra, SUM(quantidade) AS quantidade, SUM(preco) AS preco
@@ -1088,15 +968,13 @@ def handle_get_cardapio(data):
                 ''', fcomanda, ordem,dia)
                 nomes = db.execute(
                     'SELECT nome FROM pedidos WHERE comanda = ? AND ordem = ? AND nome != ? AND dia = ? GROUP BY nome', fcomanda, ordem, '-1',dia)
-                print(dados)
-                print(type(dados))
-                # Emitir os dados mais recentes da comanda e atualizar no frontend
+             
                 preco_a_pagar = preco_total-preco_pago
                 emit('preco', {'preco_a_pagar': preco_a_pagar, 'preco_total': preco_total, 'preco_pago': preco_pago,
                                'dados': dados, 'comanda': fcomanda, 'nomes': nomes}, broadcast=True)
             else:
                 emit('preco', {'preco_a_pagar': '', 'preco_total': '', 'preco_pago': '', 'dados': '', 'nomes': '',
-                               'comanda': fcomanda}, broadcast=True)
+                               'comanda': fcomanda},broadcast=True)
         else:
             dados = db.execute('''
                     SELECT pedido,id,ordem,nome,extra, SUM(quantidade) AS quantidade, SUM(preco) AS preco
@@ -1110,7 +988,6 @@ def handle_get_cardapio(data):
 
     except Exception as e:
         print("Erro ao calcular preço:", e)
-        emit('error', {'message': str(e)})
 
 
 
