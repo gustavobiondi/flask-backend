@@ -14,4 +14,4 @@ else:
 
 hoje = datetime.now().date()
 
-db.execute('ALTER TABLE IF EXISTS pagamentos ADD COLUMN tipo TEXT')
+db.execute('ALTER TABLE pagamentos ADD COLUMN tipo TEXT')
