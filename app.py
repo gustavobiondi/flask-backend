@@ -958,7 +958,7 @@ def handle_get_cardapio(data):
             if valor_pago and valor_pago[0]['total']:
                 preco_pago = float(valor_pago[0]['total']),
             
-            total_comanda = db.execute('SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ? AND tipo = ?', fcomanda, ordem,dia,'normal')
+            total_comanda = db.execute('SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?', fcomanda, ordem,dia)
             preco_total = 0
             if total_comanda and total_comanda[0]['total']:
                 print(total_comanda)
