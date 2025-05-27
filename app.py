@@ -585,9 +585,9 @@ def faturamento(data):
         elif row['tipo']=='10%':
             dezporcento = row['valor_total']
         elif row['tipo']=='desconto' :
-            desconto = row['valor_total']
+            desconto = row['valor_total']*-1
         faturamento += row['valor_total'] 
-    faturamento-=desconto
+    
     
     pedidosQuantDict = db.execute('SELECT SUM(quantidade) AS quantidade_total,SUM(preco) AS preco_total,categoria,preco FROM pedidos WHERE dia = ? GROUP BY categoria ORDER BY categoria ASC',dia)
     drink = 0
@@ -634,6 +634,9 @@ def alterarValor(data):
     comanda = data.get('comanda')
     print(tipo)
     print(valor)
+    if tipo == 'desconto':
+        valor*=-1
+        
     db.execute('INSERT INTO pagamentos(valor,comanda,ordem,tipo,dia) VALUES (?,?,?,?,?)',valor,comanda,0,tipo,dia)
     faturamento(True)
     handle_get_cardapio(comanda)
@@ -773,9 +776,9 @@ def inserir_preparo(data):
         db.execute('UPDATE pedidos SET fim = ? WHERE id = ? AND dia = ?', horario, id,dia)
     elif estado == 'Em Preparo':
         db.execute('UPDATE pedidos SET comecar = ? WHERE id = ? AND dia = ?', horario, id,dia)
-
-    db.execute('UPDATE pedidos SET estado = ? WHERE id = ? AND dia = ?',dia,
-               estado, id)
+    else:
+        db.execute('UPDATE pedidos SET estado = ? WHERE id = ? AND dia = ?',estado,
+               id, dia)
     getPedidos(True)
 
 
