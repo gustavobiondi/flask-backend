@@ -23,7 +23,7 @@ import requests
 
 
 var = True
-manipule = False
+manipule = True
 if manipule:
     subprocess.run(['python','manipule.py'])
 
