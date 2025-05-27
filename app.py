@@ -952,11 +952,12 @@ def handle_get_cardapio(data):
             fcomanda = data.get('fcomanda')
             ordem = data.get('ordem')
         if ordem == 0:
-            valor_pago = db.execute('SELECT SUM(valor) AS total FROM pagamentos WHERE comanda = ? AND ordem = ? AND dia = ?', fcomanda, ordem,dia)
+            valor_pago = db.execute('SELECT SUM(valor) AS total FROM pagamentos WHERE comanda = ? AND ordem = ? AND dia = ? AND tipo = ?', fcomanda, ordem,dia,'normal')
             preco_pago = 0
             if valor_pago and valor_pago[0]['total']:
-                preco_pago = float(valor_pago[0]['total'])
-            total_comanda = db.execute('SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ?', fcomanda, ordem,dia)
+                preco_pago = float(valor_pago[0]['total']),
+            
+            total_comanda = db.execute('SELECT SUM(preco) AS total FROM pedidos WHERE comanda = ? AND ordem = ? AND dia = ? AND tipo = ?', fcomanda, ordem,dia,'normal')
             preco_total = 0
             if total_comanda and total_comanda[0]['total']:
                 print(total_comanda)
