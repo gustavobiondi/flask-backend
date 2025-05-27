@@ -776,8 +776,8 @@ def inserir_preparo(data):
         db.execute('UPDATE pedidos SET fim = ? WHERE id = ? AND dia = ?', horario, id,dia)
     elif estado == 'Em Preparo':
         db.execute('UPDATE pedidos SET comecar = ? WHERE id = ? AND dia = ?', horario, id,dia)
-    else:
-        db.execute('UPDATE pedidos SET estado = ? WHERE id = ? AND dia = ?',estado,
+    
+    db.execute('UPDATE pedidos SET estado = ? WHERE id = ? AND dia = ?',estado,
                id, dia)
     getPedidos(True)
 
