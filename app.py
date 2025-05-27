@@ -23,7 +23,7 @@ import requests
 
 
 var = True
-manipule = True
+manipule = False
 if manipule:
     subprocess.run(['python','manipule.py'])
 
@@ -953,7 +953,7 @@ def handle_get_cardapio(data):
             fcomanda = data.get('fcomanda')
             ordem = data.get('ordem')
         if ordem == 0:
-            valor_pago = db.execute('SELECT SUM(valor) AS total FROM pagamentos WHERE comanda = ? AND ordem = ? AND dia = ? AND tipo IN (?,?)', fcomanda, ordem,dia,'normal','desconto')
+            valor_pago = db.execute('SELECT SUM(valor) AS total FROM pagamentos WHERE comanda = ? AND ordem = ? AND dia = ? AND (tipo = ? OR tipo = ?)', fcomanda, ordem,dia,'normal','desconto')
             preco_pago = 0
             if valor_pago and valor_pago[0]['total']:
                 preco_pago = float(valor_pago[0]['total']),
