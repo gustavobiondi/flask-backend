@@ -23,7 +23,8 @@ import requests
 
 
 var = True
-if var:
+manipule = False
+if manipule:
     subprocess.run(['python','manipule.py'])
 
 # Inicialização do app Flask e SocketIO
