@@ -22,8 +22,12 @@ import subprocess
 import requests
 
 
-var = True
+var = True  # Variável para verificar se o banco de dados está no diretório data ou na raiz do projeto
 manipule = False
+brazil = timezone('America/Sao_Paulo')
+
+
+
 if manipule:
     subprocess.run(['python','manipule.py'])
 
@@ -42,7 +46,6 @@ else:
     db=SQL('sqlite:///data/dados.db')
 
 CORS(app, resources={r"/*": {"origins": "*"}})  # Permite todas as origens
-brazil = timezone('America/Sao_Paulo')
 
 @app.route("/")
 def home():
@@ -54,39 +57,42 @@ def salvarTokenCargo():
     username = data.get('username')
     cargo = data.get('cargo')
     token = data.get('token')
-    print(f'data {data}, username {username}, token {token}')
-    if db.execute('SELECT * FROM tokens WHERE token =?',token):
-        db.execute('DELETE FROM tokens WHERE token = ?',token)
+    if token!= 'semToken':
+        print(f'data {data}, username {username}, token {token}')
+        if db.execute('SELECT * FROM tokens WHERE token =?',token):
+            db.execute('DELETE FROM tokens WHERE token = ?',token)
     
-    db.execute('INSERT INTO tokens (username,cargo,token) VALUES (?,?,?)',username,cargo,token)
+        db.execute('INSERT INTO tokens (username,cargo,token) VALUES (?,?,?)',username,cargo,token)
     
 
-    return "cargo e user inserido com sucesso"
+        return "cargo e user inserido com sucesso"
+    return "Token inválido ou não fornecido", 400
 
 def enviar_notificacao_expo(cargo,titulo,corpo,token_user,canal="default"):
     print(f'cargo {cargo} titulo, {titulo},corpo {corpo} canal {canal}')
     if cargo:
-        tokens = db.execute('SELECT token FROM tokens WHERE cargo = ? GROUP BY token',cargo)
+        tokens = db.execute('SELECT token FROM tokens WHERE cargo = ? AND token !=? GROUP BY token',cargo,'semToken')
     else:
         tokens = db.execute('SELECT token FROM tokens GROUP BY token')
     tokens = [row for row in tokens if row['token'] != token_user]
     respostas = []
     for row in tokens:
-        token = row['token']
-        url = "https://exp.host/--/api/v2/push/send"
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "to": token,
-            "title": titulo,
-            "body": corpo,
-            "sound": "default",
-            "android_channel_id": canal  # precisa estar igual ao definido no app
-        }
-        res = requests.post(url, json=payload, headers=headers)
-        respostas.append(res.json())  # Armazena o conteúdo da resposta, não o objeto
+        token = row.get('token',None)
+        if token:
+            url = "https://exp.host/--/api/v2/push/send"
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "to": token,
+                "title": titulo,
+                "body": corpo,
+                "sound": "default",
+                "android_channel_id": canal  # precisa estar igual ao definido no app
+            }
+            res = requests.post(url, json=payload, headers=headers)
+            respostas.append(res.json())  # Armazena o conteúdo da resposta, não o objeto
     print(respostas)
     return respostas
 
@@ -585,8 +591,9 @@ def faturamento(data):
         elif row['tipo']=='10%':
             dezporcento = row['valor_total']
         elif row['tipo']=='desconto' :
-            desconto = row['valor_total']*-1
-        faturamento += row['valor_total'] 
+            desconto = row['valor_total']
+        faturamento +=  row['valor_total'] 
+    faturamento -=desconto
     
     
     pedidosQuantDict = db.execute('SELECT SUM(quantidade) AS quantidade_total,SUM(preco) AS preco_total,categoria,preco FROM pedidos WHERE dia = ? GROUP BY categoria ORDER BY categoria ASC',dia)
@@ -634,9 +641,6 @@ def alterarValor(data):
     comanda = data.get('comanda')
     print(tipo)
     print(valor)
-    if tipo == 'desconto':
-        valor*=-1
-        
     db.execute('INSERT INTO pagamentos(valor,comanda,ordem,tipo,dia) VALUES (?,?,?,?,?)',valor,comanda,0,tipo,dia)
     faturamento(True)
     handle_get_cardapio(comanda)
@@ -931,7 +935,7 @@ def transferir_para_estoque_carrinho(data):
     token = data.get('token')
     usuario = data.get('username')
     for i in itensAlterados:
-        
+        print('Transferindo para estoque carrinho:', i['item'], i['quantidade'])
         quantidade_antiga = db.execute('SELECT quantidade FROM estoque_geral WHERE item = ?',i['item'])
         existe_no_estoque = db.execute('SELECT quantidade FROM estoque WHERE item = ?',i['item'])
         if quantidade_antiga and existe_no_estoque:
